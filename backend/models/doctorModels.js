@@ -13,7 +13,7 @@ const doctorSchema = new mongoose.Schema({
     fees: { type: Number, required: true },
     address: { type: Object, required: true },
     date: { type: Number, required: true },
-    slots_booked: { type: Object, default: {} }
+    slots_booked: { type: Map, of: [String], default: {} }
 
 }, { minimize: false })
 

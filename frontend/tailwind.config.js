@@ -6,13 +6,15 @@ export default {
   ],
   theme: {
     extend: {
-      colors:{
+      colors: {
         'primary': '#5f6FFF'
       },
-      gridTemplateColumns:{
+      gridTemplateColumns: {
         'auto': 'repeat(auto-fill, minmax(200px,1fr)) '
       }
     },
   },
-  plugins: [],
+  plugins: [
+    require('tailwind-scrollbar')({ nocompatible: true }),
+  ],
 }
