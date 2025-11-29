@@ -4,10 +4,12 @@ import { useState } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import { useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 const MyAppointments = () => {
 
   const { backendUrl, token, getDoctorsData } = useContext(AppContext);
   const [appointments, setAppointments] = useState([]);
+  const [searchParams] = useSearchParams()
 
   const months = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
   const slotDateFormat = (slotDate) => {
@@ -48,7 +50,41 @@ const MyAppointments = () => {
     }
   }
 
+  const appointmentPayment = async (appointmentId) => {
+    try {
+      // Gọi API tạo PayPal Payment
+      const { data } = await axios.post(
+        backendUrl + '/api/user/payment-paypal',
+        { appointmentId },
+        { headers: { token } }
+      )
 
+      if (data.success) {
+        // Chuyển hướng sang trang PayPal
+        window.location.replace(data.paymentUrl)
+      } else {
+        toast.error(data.message)
+      }
+    } catch (error) {
+      console.log(error)
+      toast.error(error.message)
+    }
+  }
+
+  useEffect(() => {
+    if (searchParams.get('success') === 'true') {
+      toast.success('Payment Successful!');
+      getUserAppointments();
+    } else if (searchParams.get('success') === 'false') {
+      toast.error('Payment Failed!');
+    }
+  }, [searchParams])
+
+  useEffect(() => {
+    if (token) {
+      getUserAppointments();
+    }
+  }, [token])
 
 
 
@@ -83,8 +119,35 @@ const MyAppointments = () => {
             </div>
             <div></div>
             <div className='flex flex-col gap-2 justify-end'>
-              {!item.cancelled && <button className='text-sm text-stone-500 text-center sm:min-w-48 py-2 border rounded hover:bg-primary hover:text-white transition-all duration-300'>Pay Online</button>}
+              {/* {!item.cancelled && <button className='text-sm text-stone-500 text-center sm:min-w-48 py-2 border rounded hover:bg-primary hover:text-white transition-all duration-300'>Pay Online</button>}
               {!item.cancelled && <button onClick={() => cancelAppointment(item._id)} className='text-sm text-stone-500 text-center sm:min-w-48 py-2 border rounded hover:bg-red-500 hover:text-white transition-all duration-300'>Cancel Appointment</button>}
+              {item.cancelled && <button className='sm:min-w-48 py-2 border border-red-500 rounded text-red-500'>Appointment Cancelled</button>} */}
+
+              {/* Nút Pay Online */}
+              {!item.cancelled && !item.payment && (
+                <button
+                  onClick={() => appointmentPayment(item._id)}
+                  className='text-sm text-stone-500 text-center sm:min-w-48 py-2 border rounded hover:bg-primary hover:text-white transition-all duration-300'
+                >
+                  Pay Online
+                </button>
+              )}
+
+              {/* Nút Paid */}
+              {!item.cancelled && item.payment && (
+                <button className='text-sm text-stone-500 text-center sm:min-w-48 py-2 border rounded bg-indigo-50 text-indigo-500 cursor-default'>
+                  Paid
+                </button>
+              )}
+
+              {/* Nút Cancel */}
+              {!item.cancelled && (
+                <button onClick={() => cancelAppointment(item._id)} className='text-sm text-stone-500 text-center sm:min-w-48 py-2 border rounded hover:bg-red-500 hover:text-white transition-all duration-300'>
+                  Cancel Appointment
+                </button>
+              )}
+
+              {/* Trạng thái đã hủy */}
               {item.cancelled && <button className='sm:min-w-48 py-2 border border-red-500 rounded text-red-500'>Appointment Cancelled</button>}
             </div>
           </div>

@@ -1,5 +1,5 @@
 import express from 'express';
-import { registerUser, loginUser, getProfile, updateProfile, bookAppointment, listAppointments, cancelAppointment } from '../controllers/userController.js';
+import { registerUser, loginUser, getProfile, updateProfile, bookAppointment, listAppointments, cancelAppointment, createPayPalPayment, executePayPalPayment } from '../controllers/userController.js';
 import authUser from '../middlewares/authUser.js';
 import upload from '../middlewares/multer.js';
 
@@ -17,7 +17,9 @@ userRouter.get('/appointments', authUser, listAppointments)
 userRouter.post('/cancel-appointment', authUser, cancelAppointment)
 
 
-
-
+// --- PAYPAL ROUTES ---
+userRouter.post('/payment-paypal', authUser, createPayPalPayment)
+userRouter.get('/paypal-return', executePayPalPayment)
+userRouter.get('/paypal-cancel', (req, res) => res.send('Cancelled')) // Simple cancel handler
 
 export default userRouter  
