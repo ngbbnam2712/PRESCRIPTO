@@ -22,26 +22,26 @@ const Sidebar = () => {
 
                     <NavLink className={({ isActive }) => `flex items-center gap-3 px-3 py-3.5 md:px-9 md:min-w-72 cursor-pointer border-r-4  ${isActive ? 'bg-[#F2F3FF] border-primary' : 'border-transparent'}`} to={'/admin-dashboard'}>
                         <img src={assets.home_icon} alt="" />
-                        <p>Dashboard</p>
+                        <p className='hidden md:block'>Dashboard</p>
                     </NavLink>
 
 
 
                     <NavLink className={({ isActive }) => `flex items-center gap-3 px-3 py-3.5 md:px-9 md:min-w-72 cursor-pointer border-r-4  ${isActive ? 'bg-[#F2F3FF] border-primary' : 'border-transparent'}`} to={'/all-appointments'}>
                         <img src={assets.appointment_icon} alt="" />
-                        <p>All Appointments</p>
+                        <p className='hidden md:block'>All Appointments</p>
                     </NavLink>
 
 
                     <NavLink className={({ isActive }) => `flex items-center gap-3 px-3 py-3.5 md:px-9 md:min-w-72 cursor-pointer border-r-4  ${isActive ? 'bg-[#F2F3FF] border-primary' : 'border-transparent'}`} to={'/add-doctor'}>
                         <img src={assets.add_icon} alt="" />
-                        <p>Add Doctor</p>
+                        <p className='hidden md:block'>Add Doctor</p>
                     </NavLink>
 
 
                     <NavLink className={({ isActive }) => `flex items-center gap-3 px-3 py-3.5 md:px-9 md:min-w-72 cursor-pointer border-r-4  ${isActive ? 'bg-[#F2F3FF] border-primary' : 'border-transparent'}`} to={'/doctor-list'}>
                         <img src={assets.people_icon} alt="" />
-                        <p>Doctor List</p>
+                        <p className='hidden md:block'>Doctor List</p>
                     </NavLink>
 
 
@@ -54,20 +54,20 @@ const Sidebar = () => {
 
                     <NavLink className={({ isActive }) => `flex items-center gap-3 px-3 py-3.5 md:px-9 md:min-w-72 cursor-pointer border-r-4  ${isActive ? 'bg-[#F2F3FF] border-primary' : 'border-transparent'}`} to={'/doctor-dashboard'}>
                         <img src={assets.home_icon} alt="" />
-                        <p>Dashboard</p>
+                        <p className='hidden md:block'>Dashboard</p>
                     </NavLink>
 
 
 
                     <NavLink className={({ isActive }) => `flex items-center gap-3 px-3 py-3.5 md:px-9 md:min-w-72 cursor-pointer border-r-4  ${isActive ? 'bg-[#F2F3FF] border-primary' : 'border-transparent'}`} to={'/doctor-appointments'}>
                         <img src={assets.appointment_icon} alt="" />
-                        <p>All Appointments</p>
+                        <p className='hidden md:block'>All Appointments</p>
                     </NavLink>
 
 
                     <NavLink className={({ isActive }) => `flex items-center gap-3 px-3 py-3.5 md:px-9 md:min-w-72 cursor-pointer border-r-4  ${isActive ? 'bg-[#F2F3FF] border-primary' : 'border-transparent'}`} to={'/doctor-profile'}>
                         <img src={assets.people_icon} alt="" />
-                        <p>Profile</p>
+                        <p className='hidden md:block'>Profile</p>
                     </NavLink>
 
 
