@@ -123,7 +123,7 @@ const MyProfile = () => {
           <p className='font-medium'>Birthday:</p>
           {
             isEdit
-              ? <input className='max-w-28 bg-gray-100' type='date' onChange={(e) => setUserData(prev => ({ ...prev, dob: e.target.value }))} value={userData.dob}></input>
+              ? <input className='max-w-28 bg-gray-100' type='date' onChange={(e) => setUserData(prev => ({ ...prev, dob: e.target.value }))} value={userData.dob === "Not Selected" ? "" : userData.dob}></input>
               : <p className='text-gray-400'>{userData.dob}</p>
           }
         </div>

@@ -4,6 +4,7 @@ import axios from 'axios'
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom'
 import { DoctorContext } from '../context/DoctorContext';
+
 const Login = () => {
 
 
@@ -40,7 +41,7 @@ const Login = () => {
           localStorage.setItem('dToken', data.token)
           setDToken(data.token)
           console.log(data.token)
-          navigate('/')
+          navigate('/doctor-dashboard')
         } else {
           toast.error(data.message)
         }

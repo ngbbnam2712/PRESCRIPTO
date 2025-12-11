@@ -1,7 +1,7 @@
 import { createContext, useState } from "react";
 import axios from 'axios'
 import { toast } from 'react-toastify'
-import { data } from "react-router-dom";
+
 
 export const AdminContext = createContext();
 
@@ -95,7 +95,6 @@ const AdminContextProvider = (props) => {
         getAllDoctors, changeAvailability,
         getAllAppointments,
         appointments, setAppointments,
-        getAllAppointments,
         cancelAppointment,
         dashData, setDashData,
         getDashData

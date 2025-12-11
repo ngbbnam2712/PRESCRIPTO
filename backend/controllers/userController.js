@@ -2,18 +2,18 @@ import validator from 'validator'
 
 import bcrypt from 'bcrypt'
 
-import userModel from '../models/userModels.js'
+import userModel from '../models/userModel.js'
 
-import doctorModel from '../models/doctorModels.js'
+import doctorModel from '../models/doctorModel.js'
 
 import jwt from 'jsonwebtoken'
 
 import { v2 as cloudinary } from 'cloudinary'
 
-import appointmentModel from '../models/appointmentModels.js'
+import appointmentModel from '../models/appointmentModel.js'
 import paypal from 'paypal-rest-sdk'
 
-
+import nodemailer from 'nodemailer'
 
 
 //API to register user
@@ -507,83 +507,54 @@ const listAppointments = async (req, res) => {
 /// API to cancel appointments
 
 
+// backend/controllers/userController.js
 
 const cancelAppointment = async (req, res) => {
-
     try {
-
-
-
+        // Lấy userId (từ middleware auth) và appointmentId (từ client gửi lên)
         const userId = req.userId
+        const { appointmentId } = req.body;
 
-        const { appointmentId } = req.body
+        // BƯỚC 1: Tìm cuộc hẹn trong DB
+        const appointmentData = await appointmentModel.findById(appointmentId);
 
-
-
-        const appointmentData = await appointmentModel.findById(appointmentId)
-
-
-
-        //verify appointment
-
-        if (appointmentData.userId !== userId) {
-
-            return res.json({ success: false, message: 'Unauthorized action' })
-
+        // Kiểm tra xem cuộc hẹn có tồn tại không
+        if (!appointmentData) {
+            return res.json({ success: false, message: "Appointment not found" });
         }
 
+        // BƯỚC 2: Xác thực quyền (Chỉ chủ sở hữu mới được hủy)
+        // Lưu ý: convert sang string để so sánh
+        if (appointmentData.userId.toString() !== userId) {
+            return res.json({ success: false, message: "Unauthorized action" });
+        }
 
+        // BƯỚC 3: Cập nhật trạng thái cuộc hẹn (Hủy, Reset hoàn thành, Đánh dấu chưa thanh toán)
+        await appointmentModel.findByIdAndUpdate(appointmentId, {
+            cancelled: true,
+            status: 'Cancelled',
+            isCompleted: false, // Reset để tránh tính doanh thu
+            payment: false      // Hủy thì coi như tiền chưa vào túi
+        });
 
-        await appointmentModel.findByIdAndUpdate(appointmentId, { cancelled: true })
+        // BƯỚC 4: Giải phóng Slot cho bác sĩ (Release Slot)
+        const { docId, slotDate, slotTime } = appointmentData;
 
+        const doctorData = await doctorModel.findById(docId);
 
+        // Dùng kỹ thuật $pull của MongoDB để xóa 1 phần tử khỏi mảng nhanh gọn
+        if (doctorData.slots_booked[slotDate]) {
+            await doctorModel.findByIdAndUpdate(docId, {
+                $pull: { [`slots_booked.${slotDate}`]: slotTime }
+            });
+        }
 
-
-
-
-
-
-
-        //release slot
-
-
-
-
-
-
-
-        const { docId, slotDate, slotTime } = appointmentData
-
-
-
-        const doctorData = await doctorModel.findById(docId)
-
-
-
-        await doctorModel.findByIdAndUpdate(docId, {
-
-            $pull: { [`slots_booked.${slotDate}`]: slotTime }
-
-        })
-
-        res.json({ success: true, message: 'Appointment Cancelled' })
-
-
-
-
+        res.json({ success: true, message: 'Appointment Cancelled' });
 
     } catch (error) {
-
-        console.log(error)
-
-        res.json({ success: false, message: error.message })
-
-
-
+        console.log(error);
+        res.json({ success: false, message: error.message });
     }
-
-
-
 }
 // paypal config
 paypal.configure({
@@ -690,6 +661,237 @@ const executePayPalPayment = async (req, res) => {
     }
 };
 
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import reviewModel from '../models/reviewModel.js'
+
+const chatWithAI = async (req, res) => {
+    try {
+        const { question } = req.body;
+
+        if (!question) {
+            return res.json({ success: false, message: "Vui lòng nhập câu hỏi." });
+        }
+
+        // 1. LẤY DỮ LIỆU BÁC SĨ (FULL DATA)
+        // -password -email: Dấu trừ (-) nghĩa là loại bỏ 2 trường này
+        // available: true: Chỉ lấy bác sĩ đang làm việc
+        const doctors = await doctorModel.find({ available: true }).select('-password -email');
+
+        if (!doctors || doctors.length === 0) {
+            return res.json({ success: true, reply: "Hiện tại không có bác sĩ nào khả dụng." });
+        }
+
+        // 2. CẤU HÌNH AI
+        const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+        // 3. TẠO PROMPT THÔNG MINH
+        // Lấy giờ hiện tại để AI có khái niệm về thời gian
+        const now = new Date();
+        const currentDateTime = now.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+
+        const prompt = `
+        Bạn là Trợ lý Lễ tân của Phòng khám Prescripto.
+        
+        --- THÔNG TIN QUAN TRỌNG ---
+        1. Thời gian hiện tại của hệ thống: ${currentDateTime}
+        2. GIỜ LÀM VIỆC CỦA BỆNH VIỆN: Từ 10:00 AM (Sáng) đến 09:00 PM (Tối). 
+           (Tuyệt đối không nhận khách ngoài khung giờ này).
+
+        --- DỮ LIỆU BÁC SĨ & LỊCH TRÌNH ---
+        Dưới đây là danh sách bác sĩ và lịch đã kín (slots_booked) của họ:
+        ${JSON.stringify(doctors)}
+
+        --- CÂU HỎI CỦA KHÁCH ---
+        "${question}"
+
+        --- YÊU CẦU TRẢ LỜI ---
+        1. Kiểm tra giờ làm việc: Nếu khách muốn hẹn lúc 8h sáng hay 10h đêm, hãy từ chối khéo và nhắc lại giờ mở cửa (10h-21h).
+        2. Kiểm tra lịch bận (slots_booked): 
+           - Cấu trúc slots_booked là { "timestamp_ngày": ["giờ_bận_1", "giờ_bận_2"] }.
+           - Hãy xem kỹ xem giờ khách muốn đặt có bị trùng trong danh sách này không.
+        3. Tư vấn bác sĩ: Dựa vào chuyên khoa (speciality), kinh nghiệm (experience), và giá (fees).
+        4. Trả lời ngắn gọn, thân thiện bằng tiếng Việt.
+        `;
+
+        // 4. GỬI CHO AI XỬ LÝ
+        const result = await model.generateContent(prompt);
+        const responseText = result.response.text();
+
+        res.json({ success: true, reply: responseText });
+
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+}
 
 
-export { registerUser, loginUser, getProfile, updateProfile, bookAppointment, listAppointments, cancelAppointment, createPayPalPayment, executePayPalPayment }
+
+
+
+
+
+/// API forgot password
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.EMAIL_USER, // Email của bạn (VD: hotro.phongkham@gmail.com)
+        pass: process.env.EMAIL_PASS  // Mật khẩu ứng dụng (App Password)
+    }
+});
+const forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        // 1. Kiểm tra email có tồn tại không
+        const user = await userModel.findOne({ email });
+        if (!user) {
+
+            return res.json({ success: false, message: "Email không tồn tại trong hệ thống" });
+        }
+
+        // 2. Tạo Token (Có thể dùng JWT hoặc random string)
+        // Token này chỉ chứa ID user và hết hạn sau 15 phút
+        const resetToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '15m' });
+
+        // 3. Lưu Token vào DB
+        await userModel.findByIdAndUpdate(user._id, {
+            resetPasswordToken: resetToken,
+            resetPasswordExpire: Date.now() + 15 * 60 * 1000 // 15 phút tính bằng miliseconds
+        });
+
+        // 4. Tạo Link reset (Trỏ về Frontend)
+        // Giả sử Frontend chạy port 5173
+        const resetUrl = `http://localhost:5173/reset-password/${resetToken}`;
+
+        // 5. Gửi Email
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: user.email,
+            subject: 'Đặt lại mật khẩu - Hệ thống đặt lịch khám',
+            text: `Bạn nhận được email này vì đã yêu cầu đặt lại mật khẩu.\n\n 
+            Vui lòng click vào link sau để đặt lại mật khẩu (Link hết hạn sau 15 phút):\n\n 
+            ${resetUrl}\n\n
+            Nếu bạn không yêu cầu, vui lòng bỏ qua email này.`
+        };
+
+        await transporter.sendMail(mailOptions);
+
+        res.json({ success: true, message: "Link đặt lại mật khẩu đã được gửi vào email của bạn!" });
+
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+}
+
+
+/// API set new pass
+const resetPassword = async (req, res) => {
+    try {
+        const { token, newPassword } = req.body;
+
+        // 1. Tìm user có token khớp VÀ chưa hết hạn
+        const user = await userModel.findOne({
+            resetPasswordToken: token,
+            resetPasswordExpire: { $gt: Date.now() } // $gt: Greater Than (Lớn hơn thời gian hiện tại)
+        });
+
+        if (!user) {
+            return res.json({ success: false, message: "Token không hợp lệ hoặc đã hết hạn" });
+        }
+
+        // 2. Mã hóa mật khẩu mới
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+        // 3. Cập nhật User & Xóa token tạm
+        await userModel.findByIdAndUpdate(user._id, {
+            password: hashedPassword,
+            resetPasswordToken: null,
+            resetPasswordExpire: null
+        });
+
+        res.json({ success: true, message: "Mật khẩu đã được thay đổi thành công! Vui lòng đăng nhập lại." });
+
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+}
+/// API add reviews 
+const addReview = async (req, res) => {
+    try {
+        const { appointmentId, rating, comment } = req.body;
+        const userId = req.userId; // Lấy từ middleware authUser
+        // --- BƯỚC 1: TÌM CUỘC HẸN ---
+        const appointment = await appointmentModel.findById(appointmentId);
+        console.log("---------------- DEBUG REVIEW ----------------");
+        console.log("1. Appointment ID:", appointmentId);
+        console.log("2. ID chủ cuộc hẹn (Database):", appointment.userId.toString());
+        console.log("3. ID người đang login (Token):", userId);
+        console.log("----------------------------------------------");
+        // 1.1 Kiểm tra cuộc hẹn có tồn tại không
+        if (!appointment) {
+            return res.json({ success: false, message: "Cuộc hẹn không tìm thấy!" });
+        }
+
+        // 1.2 Kiểm tra cuộc hẹn có đúng là của User đang đăng nhập không (Chống đánh giá hộ)
+        if (appointment.userId.toString() !== userId) {
+            return res.json({ success: false, message: "Bạn không có quyền đánh giá cuộc hẹn này!" });
+        }
+
+        // --- BƯỚC 2: KIỂM TRA TRẠNG THÁI (CORE LOGIC) ---
+        // Chỉ khi status === 'Completed' mới được đi tiếp
+        if (!appointment.isCompleted) {
+            return res.json({
+                success: false,
+                message: "Bạn chưa hoàn thành buổi khám, không thể đánh giá!"
+            });
+        }
+
+        // --- BƯỚC 3: KIỂM TRA ĐÃ ĐÁNH GIÁ CHƯA ---
+        if (appointment.isReviewed) {
+            return res.json({ success: false, message: "Bạn đã đánh giá cuộc hẹn này rồi!" });
+        }
+
+        // --- BƯỚC 4: XÁC ĐỊNH BÁC SĨ (CHÍNH XÁC TUYỆT ĐỐI) ---
+        // Thay vì lấy docId từ req.body (User gửi lên có thể sai), 
+        // ta lấy docId TRỰC TIẾP từ appointment tìm được trong Database.
+        const docId = appointment.docId;
+
+        // --- BƯỚC 5: THỰC HIỆN LƯU ---
+        const newReview = new reviewModel({
+            docId: docId, // Đảm bảo review gắn đúng vào bác sĩ của cuộc hẹn
+            userId: userId,
+            appointmentId: appointmentId,
+            rating: rating,
+            comment: comment
+        });
+
+        await newReview.save();
+
+        // --- BƯỚC 6: TÍNH LẠI ĐIỂM CHO BÁC SĨ ---
+        const reviews = await reviewModel.find({ docId });
+        let totalStars = 0;
+        reviews.map((item) => totalStars += item.rating);
+        let avg = reviews.length > 0 ? totalStars / reviews.length : 0;
+
+        await doctorModel.findByIdAndUpdate(docId, {
+            averageRating: avg,
+            totalRatings: reviews.length
+        });
+
+        // --- BƯỚC 7: KHÓA CUỘC HẸN ---
+        await appointmentModel.findByIdAndUpdate(appointmentId, { isReviewed: true });
+
+        res.json({ success: true, message: "Đánh giá thành công!" });
+
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+}
+
+export { registerUser, loginUser, getProfile, updateProfile, bookAppointment, listAppointments, cancelAppointment, createPayPalPayment, executePayPalPayment, chatWithAI, forgotPassword, resetPassword, addReview }

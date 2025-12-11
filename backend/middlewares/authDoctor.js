@@ -6,18 +6,18 @@ import jwt from 'jsonwebtoken'
 const authDoctor = async (req, res, next) => {
     try {
 
-        const { dtoken } = req.headers
+        const dToken = req.headers.dtoken || req.headers.dToken
 
 
-        if (!dtoken) {
+        if (!dToken) {
             return res.status(401).json({ success: false, message: "Not Authorized Login Again" })
         }
 
 
-        const token_decode = jwt.verify(token, process.env.JWT_SECRET)
+        const token_decode = jwt.verify(dToken, process.env.JWT_SECRET)
 
 
-        req.userId = token_decode.id
+        req.docId = token_decode.id
 
         next()
 

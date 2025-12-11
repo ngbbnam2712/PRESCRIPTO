@@ -18,7 +18,8 @@ const Appointment = () => {
   const [docSlots, setDocSlots] = useState([])
   const [slotIndex, setSlotIndex] = useState(0)
   const [slotTime, setSlotTime] = useState("")
-
+  const [reviews, setReviews] = useState([])
+  const [avgRating, setAvgRating] = useState(0)
   const fetchDocInfo = async () => {
     if (doctors.length === 0) {
       // Tải lại toàn bộ nếu mảng rỗng
@@ -28,9 +29,33 @@ const Appointment = () => {
 
     if (docInfoFound) {
       setDocInfo(docInfoFound)
+      setAvgRating(docInfoFound.averageRating || 0)
     }
 
   }
+
+
+  /// review panel
+  const fetchDocReviews = async () => {
+    try {
+      // Giả sử API là: GET /api/doctor/reviews/:docId
+      // Nếu bạn chưa viết API này, danh sách sẽ rỗng
+      const { data } = await axios.get(backendUrl + `/api/doctor/reviews/${docId}`)
+      if (data.success) {
+        setReviews(data.reviews)
+        // Nếu muốn tính trung bình cộng tại frontend (tùy chọn)
+        // const total = data.reviews.reduce((acc, curr) => acc + curr.rating, 0)
+        // setAvgRating(total / data.reviews.length)
+      }
+    } catch (error) {
+      console.log("Chưa có API lấy review hoặc lỗi mạng")
+    }
+  }
+
+
+
+
+
 
   const getAvailableSlots = async () => {
     if (!docInfo || !docInfo.slots_booked) {
@@ -125,6 +150,17 @@ const Appointment = () => {
 
     }
   }
+  const StarRating = ({ rating }) => {
+    return (
+      <div className="flex text-yellow-500">
+        {[...Array(5)].map((_, index) => (
+          <span key={index} className={index < Math.round(rating) ? "text-yellow-400" : "text-gray-300"}>
+            ★
+          </span>
+        ))}
+      </div>
+    );
+  };
 
 
   useEffect(() => {
@@ -137,6 +173,8 @@ const Appointment = () => {
   }, [docSlots])
   useEffect(() => {
     fetchDocInfo()
+    fetchDocReviews()
+
   }, [doctors, docId])
 
   return docInfo && (
@@ -193,10 +231,43 @@ const Appointment = () => {
         </div>
         <button onClick={bookAppointments} className='bg-primary text-white text-sm font-light px-14 py-3 rounded-full my-6'>Book an appointment</button>
       </div>
+      {/* Doctor review panel */}
+      <div className='sm:ml-72 sm:pl-4 mt-8'>
+        <p className='text-gray-800 font-medium text-xl mb-4'>Reviews & Ratings</p>
+
+        {/* Nếu chưa có review nào */}
+        {reviews.length === 0 ? (
+          <p className='text-gray-500 text-sm italic'>No reviews yet. Be the first to book and review!</p>
+        ) : (
+          <div className='flex flex-col gap-6 max-h-[400px] overflow-y-auto pr-4 scrollbar-thin'>
+            {reviews.map((item, index) => (
+              <div key={index} className='border-b border-gray-100 pb-4'>
+                <div className='flex items-center gap-3 mb-2'>
+                  {/* Avatar User (dùng ảnh mặc định nếu không có) */}
+                  <img
+                    className='w-10 h-10 rounded-full object-cover'
+                    src={item.userId?.image || assets.profile_pic || "https://via.placeholder.com/150"}
+                    alt=""
+                  />
+                  <div>
+                    <p className='text-sm font-medium text-gray-900'>{item.userId?.name || "Anonymous User"}</p>
+                    <div className='flex items-center gap-2'>
+                      <StarRating rating={item.rating} />
+                      <p className='text-xs text-gray-400'>{new Date(item.createdAt).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                </div>
+                <p className='text-gray-600 text-sm ml-14'>{item.comment}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       {/* List doctor related */}
       <RelatedDoctors docId={docId} speciality={docInfo.speciality} />
 
     </div>
+
   )
 }
 
