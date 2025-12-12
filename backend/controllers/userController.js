@@ -894,4 +894,44 @@ const addReview = async (req, res) => {
     }
 }
 
-export { registerUser, loginUser, getProfile, updateProfile, bookAppointment, listAppointments, cancelAppointment, createPayPalPayment, executePayPalPayment, chatWithAI, forgotPassword, resetPassword, addReview }
+const checkExpiredAppointments = async () => {
+    console.log('--- SCANNING FOR EXPIRED APPOINTMENTS ---');
+    try {
+        const timeLimit = new Date(Date.now() - 15 * 60 * 1000); // 15 phút trước
+
+        // 1. Tìm lịch hẹn quá hạn
+        const expiredAppointments = await appointmentModel.find({
+            status: 'Pending',
+            payment: false,
+            createdAt: { $lt: timeLimit }
+        });
+
+        if (expiredAppointments.length > 0) {
+            console.log(`Found ${expiredAppointments.length} expired appointments.`);
+
+            for (const app of expiredAppointments) {
+                // 2. Trả slot cho bác sĩ
+                const { docId, slotDate, slotTime } = app;
+                await doctorModel.findByIdAndUpdate(docId, {
+                    $pull: { [`slots_booked.${slotDate}`]: slotTime }
+                });
+
+                // 3. Hủy lịch hẹn
+                await appointmentModel.findByIdAndUpdate(app._id, {
+                    cancelled: true,
+                    status: 'Cancelled (System Auto)',
+                    isCompleted: false
+                });
+            }
+            console.log('--- CLEANUP COMPLETE ---');
+        }
+    } catch (error) {
+        console.error('Error in checkExpiredAppointments:', error);
+    }
+}
+
+
+
+
+
+export { registerUser, loginUser, getProfile, updateProfile, bookAppointment, listAppointments, cancelAppointment, createPayPalPayment, executePayPalPayment, chatWithAI, forgotPassword, resetPassword, addReview, checkExpiredAppointments }

@@ -198,8 +198,7 @@ const updateDoctorProfile = async (req, res) => {
 ///API get doctor review 
 const getDoctorReviews = async (req, res) => {
     try {
-        const { docId } = req.params;
-
+        const docId = req.params.docId
         // Tìm trong bảng reviews, populate thêm thông tin User để lấy tên và ảnh
         const reviews = await reviewModel.find({ docId })
             .populate('userId', 'name image') // Chỉ lấy field name và image của user

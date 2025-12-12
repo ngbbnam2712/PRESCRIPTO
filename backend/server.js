@@ -6,6 +6,9 @@ import connectCloudinary from './config/cloudinary.js'
 import adminRouter from './routes/adminRoute.js'
 import doctorRouter from './routes/doctorRoute.js'
 import userRouter from './routes/userRoute.js'
+import cron from 'node-cron'
+import { checkExpiredAppointments } from './controllers/userController.js';
+
 //app config
 const app = express()
 const port = process.env.PORT || 4000
@@ -34,7 +37,10 @@ app.get('/', (req, res) => {
 })
 
 
-
+cron.schedule('*/5 * * * *', () => {
+    // Gọi hàm logic bên controller
+    checkExpiredAppointments();
+});
 
 
 app.listen(port, () => {
