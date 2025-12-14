@@ -12,6 +12,7 @@ const AdminContextProvider = (props) => {
     const [doctors, setDoctors] = useState([])
     const [appointments, setAppointments] = useState([])
     const [dashData, setDashData] = useState(false)
+    const [medicines, setMedicines] = useState([])
 
     const getAllDoctors = async () => {
         try {
@@ -87,7 +88,37 @@ const AdminContextProvider = (props) => {
         }
     }
 
-
+    const getMedicines = async () => {
+        try {
+            const { data } = await axios.get(backendUrl + '/api/admin/list-medicines', { headers: { aToken } })
+            if (data.success) {
+                setMedicines(data.medicines)
+            } else {
+                toast.error(data.message)
+            }
+        } catch (error) {
+            toast.error(error.message)
+        }
+    }
+    const savePrescriptionToDb = async (appointmentId, diagnosis, prescriptionList) => {
+        try {
+            const { data } = await axios.post(backendUrl + '/api/admin/save-prescription',
+                { appointmentId, diagnosis, medicines: prescriptionList },
+                { headers: { aToken } }
+            )
+            if (data.success) {
+                toast.success(data.message)
+                getAllAppointments()
+                return true;
+            } else {
+                toast.error(data.message)
+                return false;
+            }
+        } catch (error) {
+            toast.error(error.message)
+            return false;
+        }
+    }
 
     const value = {
         aToken, setAToken,
@@ -97,7 +128,8 @@ const AdminContextProvider = (props) => {
         appointments, setAppointments,
         cancelAppointment,
         dashData, setDashData,
-        getDashData
+        getDashData,
+        medicines, getMedicines, savePrescriptionToDb
 
     }
     return (

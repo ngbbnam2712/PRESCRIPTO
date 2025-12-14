@@ -24,22 +24,30 @@ const Dashboard = () => {
 
   return dashData && (
     <div className='m-5'>
+
+      {/* --- CÁC THẺ THỐNG KÊ (CARDS) --- */}
       <div className='flex flex-wrap gap-3'>
-        <div className='flex items-center gap-2 bg-white p-4 min-w-52 rounded border-2 border-gray-100 cursor-pointer hover:scale-105 transition-all '>
-          <img className='w-14' src={assets.doctor_icon} alt="" />
+
+        {/* 1. Tổng doanh thu */}
+        <div className='flex items-center gap-2 bg-white p-4 min-w-52 rounded border-2 border-gray-100 cursor-pointer hover:scale-105 transition-all'>
+          <img className='w-14' src={assets.earning_icon} alt="" /> {/* Nhớ có icon tiền */}
           <div>
-            <p className='text-xl font-semibold text-gray-600'>{dashData.doctors}</p>
-            <p className='text-gray-400'>Doctors</p>
+            <p className='text-xl font-semibold text-gray-600'>${dashData.revenue}</p>
+            <p className='text-gray-400'>Total Revenue</p>
           </div>
         </div>
-        <div className='flex items-center gap-2 bg-white p-4 min-w-52 rounded border-2 border-gray-100 cursor-pointer hover:scale-105 transition-all '>
-          <img className='w-14' src={assets.appointment_icon} alt="" />
+
+        {/* 2. Lượt khám hôm nay */}
+        <div className='flex items-center gap-2 bg-white p-4 min-w-52 rounded border-2 border-gray-100 cursor-pointer hover:scale-105 transition-all'>
+          <img className='w-14' src={assets.appointments_icon} alt="" />
           <div>
-            <p className='text-xl font-semibold text-gray-600'>{dashData.appointments}</p>
-            <p className='text-gray-400' >Appointments</p>
+            <p className='text-xl font-semibold text-gray-600'>{dashData.appointmentsToday}</p>
+            <p className='text-gray-400'>Appointments Today</p>
           </div>
         </div>
-        <div className='flex items-center gap-2 bg-white p-4 min-w-52 rounded border-2 border-gray-100 cursor-pointer hover:scale-105 transition-all '>
+
+        {/* 3. Tổng số bệnh nhân */}
+        <div className='flex items-center gap-2 bg-white p-4 min-w-52 rounded border-2 border-gray-100 cursor-pointer hover:scale-105 transition-all'>
           <img className='w-14' src={assets.patients_icon} alt="" />
           <div>
             <p className='text-xl font-semibold text-gray-600'>{dashData.patients}</p>
@@ -48,6 +56,38 @@ const Dashboard = () => {
         </div>
       </div>
 
+      {/* --- PHẦN TOP 3 BÁC SĨ --- */}
+      <div className='bg-white mt-10 rounded-lg shadow-md p-6'>
+        <div className='flex items-center gap-2.5 mb-4'>
+          <img src={assets.list_icon} alt="" />
+          <p className='font-semibold'>Top 3 Best Performing Doctors</p>
+        </div>
+
+        <div className='grid grid-cols-1 sm:grid-cols-3 gap-6'>
+          {dashData.topDoctors.map((item, index) => (
+            <div key={index} className='border rounded-xl p-4 flex flex-col items-center bg-indigo-50 hover:shadow-lg transition'>
+              {/* Huy chương cho Top 1, 2, 3 */}
+              <div className='relative'>
+                <img className='w-20 h-20 rounded-full object-cover border-4 border-white shadow-sm' src={item.image} alt="" />
+                <span className={`absolute top-0 right-0 w-8 h-8 flex items-center justify-center rounded-full text-white font-bold border-2 border-white
+                            ${index === 0 ? 'bg-yellow-400' : index === 1 ? 'bg-gray-400' : 'bg-orange-400'}`}>
+                  #{index + 1}
+                </span>
+              </div>
+
+              <p className='text-lg font-medium text-gray-800 mt-3'>{item.name}</p>
+              <p className='text-sm text-gray-600'>{item.speciality}</p>
+
+              {/* Hiển thị số sao */}
+              <div className='flex items-center gap-1 mt-2'>
+                <p className='text-yellow-500 font-bold text-xl'>{item.averageRating || 0}</p>
+                <span className='text-yellow-500'>★</span>
+                <p className='text-xs text-gray-400'>({item.totalRatings || 0} reviews)</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
 
       <div className='bg-white'>

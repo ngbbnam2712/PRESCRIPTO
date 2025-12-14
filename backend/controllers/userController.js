@@ -14,8 +14,9 @@ import appointmentModel from '../models/appointmentModel.js'
 import paypal from 'paypal-rest-sdk'
 
 import nodemailer from 'nodemailer'
-
-
+import { sendEmail } from "../config/emailHelper.js";
+import reviewModel from '../models/reviewModel.js'
+import notificationModel from '../models/notificationModel.js'
 //API to register user
 
 
@@ -536,6 +537,12 @@ const cancelAppointment = async (req, res) => {
             isCompleted: false, // Reset để tránh tính doanh thu
             payment: false      // Hủy thì coi như tiền chưa vào túi
         });
+        const user = await userModel.findById(userId);
+        await sendEmail({
+            to: user.email,
+            subject: 'Xác nhận hủy lịch hẹn',
+            text: `Bạn đã hủy thành công lịch hẹn ngày ${appointment.slotDate}. Nếu đây là nhầm lẫn, vui lòng đặt lại ngay.`
+        });
 
         // BƯỚC 4: Giải phóng Slot cho bác sĩ (Release Slot)
         const { docId, slotDate, slotTime } = appointmentData;
@@ -662,7 +669,7 @@ const executePayPalPayment = async (req, res) => {
 };
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import reviewModel from '../models/reviewModel.js'
+
 
 const chatWithAI = async (req, res) => {
     try {
@@ -736,8 +743,8 @@ const chatWithAI = async (req, res) => {
 const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
-        user: process.env.EMAIL_USER, // Email của bạn (VD: hotro.phongkham@gmail.com)
-        pass: process.env.EMAIL_PASS  // Mật khẩu ứng dụng (App Password)
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
     }
 });
 const forgotPassword = async (req, res) => {
@@ -922,16 +929,49 @@ const checkExpiredAppointments = async () => {
                     status: 'Cancelled (System Auto)',
                     isCompleted: false
                 });
+
             }
             console.log('--- CLEANUP COMPLETE ---');
+            const user = await userModel.findById(app.userId);
+
+            if (user) {
+                // A. Tạo Web Notification
+                await notificationModel.create({
+                    userId: app.userId,
+                    content: `Lịch hẹn ngày ${app.slotDate} lúc ${app.slotTime} đã bị hủy tự động do quá hạn thanh toán.`,
+                    type: 'System'
+                });
+
+                // B. Gửi Email
+                await sendEmail({
+                    to: user.email,
+                    subject: 'Thông báo hủy lịch hẹn - Prescripto',
+                    text: `Xin chào ${user.name},\n\nLịch hẹn của bạn vào ngày ${app.slotDate} lúc ${app.slotTime} đã bị hệ thống hủy tự động vì bạn chưa hoàn tất thanh toán trong thời gian quy định.\n\nVui lòng đặt lại lịch mới nếu bạn vẫn có nhu cầu khám bệnh.\n\nTrân trọng,\nPrescripto Team.`
+                });
+            }
         }
     } catch (error) {
         console.error('Error in checkExpiredAppointments:', error);
     }
 }
 
+const getUserNotifications = async (req, res) => {
+    try {
+        const userId = req.userId; // Lấy từ authUser middleware
+
+        // Lấy thông báo, sắp xếp mới nhất lên đầu
+        const notifications = await notificationModel.find({ userId }).sort({ createdAt: -1 });
+
+        res.json({ success: true, notifications });
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+}
 
 
 
-
-export { registerUser, loginUser, getProfile, updateProfile, bookAppointment, listAppointments, cancelAppointment, createPayPalPayment, executePayPalPayment, chatWithAI, forgotPassword, resetPassword, addReview, checkExpiredAppointments }
+export {
+    registerUser, loginUser, getProfile, updateProfile, bookAppointment, listAppointments, cancelAppointment, createPayPalPayment, executePayPalPayment, chatWithAI,
+    forgotPassword, resetPassword, addReview, checkExpiredAppointments, getUserNotifications
+}

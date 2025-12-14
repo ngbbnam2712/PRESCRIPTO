@@ -14,10 +14,10 @@ const NavBar = () => {
   const navigate = useNavigate()
   const logout = () => {
     navigate('/')
-    aToken && setAToken('')
-    aToken && localStorage.removeItem('aToken')
-    dToken && setDToken('')
-    dToken && localStorage.removeItem('dToken')
+    if (aToken) setAToken('')
+    if (dToken) setDToken('')
+    localStorage.removeItem('aToken')
+    localStorage.removeItem('dToken')
   }
 
   return (

@@ -8,11 +8,26 @@ const AppContextProvider = (props) => {
 
     const currency = '$'
     const calculateAge = (dob) => {
-        const today = new Date()
-        const birthDate = new Date(dob)
+        // 1. Kiểm tra đầu vào có tồn tại không
+        if (!dob) return 'N/A';
 
-        let age = today.getFullYear() - birthDate.getFullYear()
-        return age
+        const today = new Date();
+        const birthDate = new Date(dob);
+
+        // 2. Kiểm tra xem ngày tháng có hợp lệ không (Chặn lỗi NaN ở đây)
+        if (isNaN(birthDate.getTime())) {
+            return 'N/A'; // Trả về chuỗi thay vì số lỗi
+        }
+
+        // 3. Tính tuổi bình thường
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const m = today.getMonth() - birthDate.getMonth();
+
+        if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+            age--;
+        }
+
+        return age;
     }
     const months = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
     const slotDateFormat = (slotDate) => {

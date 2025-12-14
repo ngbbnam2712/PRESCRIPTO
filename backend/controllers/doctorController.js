@@ -42,7 +42,7 @@ const loginDoctor = async (req, res) => {
         const doctor = await doctorModel.findOne({ email })
 
         if (!doctor) {
-            return res.json({ success: true, message: 'Invalid credentials' })
+            return res.json({ success: false, message: 'Invalid credentials' })
         }
 
         const isMatch = await bcrypt.compare(password, doctor.password)
@@ -81,9 +81,9 @@ const appointmentComplete = async (req, res) => {
     try {
 
 
-
-        const { appointmentId } = req.body
         const docId = req.docId
+        const { appointmentId } = req.body
+
         const appointmentData = await appointmentModel.findById(appointmentId)
 
         if (appointmentData && appointmentData.docId.toString() === docId) {
@@ -115,7 +115,10 @@ const appointmentCancel = async (req, res) => {
         const appointmentData = await appointmentModel.findById(appointmentId)
 
         if (appointmentData && appointmentData.docId.toString() === docId) {
-            await appointmentModel.findByIdAndUpdate(appointmentId, { cancelled: true })
+            await appointmentModel.findByIdAndUpdate(appointmentId, {
+                cancelled: true,
+                status: 'Cancelled'
+            })
             return res.json({ success: true, message: 'Cancellation Completed' })
         } else {
             return res.json({ success: false, message: 'Mark Failed' })
@@ -135,28 +138,23 @@ const doctorDashboard = async (req, res) => {
         const appointments = await appointmentModel.find({ docId })
 
         let earnings = 0
-
+        let patients = [];
         appointments.map((item) => {
             if (item.isCompleted || item.payment) {
-                earnings += item.amount
+                earnings += item.amount;
             }
-        })
-
-        let patients = []
-        appointments.map((item) => {
             if (!patients.includes(item.userId)) {
-                patients.push(item.userId)
+                patients.push(item.userId);
             }
-        })
+        });
 
         const dashData = {
             earnings,
             appointments: appointments.length,
             patients: patients.length,
             latestAppointments: appointments.reverse().slice(0, 5)
-
-
         }
+
         res.json({ success: true, dashData })
 
     } catch (error) {

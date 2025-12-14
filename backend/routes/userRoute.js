@@ -1,5 +1,8 @@
 import express from 'express';
-import { registerUser, loginUser, getProfile, updateProfile, bookAppointment, listAppointments, cancelAppointment, createPayPalPayment, executePayPalPayment, chatWithAI, forgotPassword, resetPassword, addReview } from '../controllers/userController.js';
+import {
+    registerUser, loginUser, getProfile, updateProfile, bookAppointment, listAppointments, cancelAppointment, createPayPalPayment, executePayPalPayment, chatWithAI,
+    forgotPassword, resetPassword, addReview, getUserNotifications
+} from '../controllers/userController.js';
 import authUser from '../middlewares/authUser.js';
 import upload from '../middlewares/multer.js';
 
@@ -25,6 +28,6 @@ userRouter.get('/paypal-cancel', (req, res) => res.send('Cancelled')) // Simple 
 ///chat with AI
 userRouter.post('/chat-ai', chatWithAI);
 userRouter.post('/add-review', authUser, addReview);
-
+userRouter.get('/notifications', authUser, getUserNotifications);
 
 export default userRouter
