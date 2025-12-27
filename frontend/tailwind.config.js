@@ -11,6 +11,9 @@ export default {
       },
       gridTemplateColumns: {
         'auto': 'repeat(auto-fill, minmax(200px,1fr)) '
+      },
+      fontFamily: {
+        outfit: ["Outfit", "sans-serif"]
       }
     },
   },

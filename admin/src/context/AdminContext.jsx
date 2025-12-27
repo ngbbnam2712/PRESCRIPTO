@@ -100,10 +100,10 @@ const AdminContextProvider = (props) => {
             toast.error(error.message)
         }
     }
-    const savePrescriptionToDb = async (appointmentId, diagnosis, prescriptionList) => {
+    const savePrescriptionToDb = async ({ appointmentId, diagnosis, medicines, symptoms }) => {
         try {
             const { data } = await axios.post(backendUrl + '/api/admin/save-prescription',
-                { appointmentId, diagnosis, medicines: prescriptionList },
+                { appointmentId, diagnosis, medicines, symptoms }, // Gửi đầy đủ 4 trường
                 { headers: { aToken } }
             )
             if (data.success) {
@@ -120,6 +120,27 @@ const AdminContextProvider = (props) => {
         }
     }
 
+
+    const loadPatientHistory = async (userId) => {
+        try {
+            const { data } = await axios.get(backendUrl + `/api/admin/patient-history`, {
+                params: { userId },
+                headers: { aToken }
+            });
+
+            if (data.success) {
+                return data.history;
+            } else {
+                toast.error(data.message);
+                return [];
+            }
+        } catch (error) {
+            console.log(error);
+            toast.error(error.message);
+            return [];
+        }
+    };
+
     const value = {
         aToken, setAToken,
         backendUrl, doctors,
@@ -129,7 +150,8 @@ const AdminContextProvider = (props) => {
         cancelAppointment,
         dashData, setDashData,
         getDashData,
-        medicines, getMedicines, savePrescriptionToDb
+        medicines, getMedicines, savePrescriptionToDb,
+        loadPatientHistory,
 
     }
     return (

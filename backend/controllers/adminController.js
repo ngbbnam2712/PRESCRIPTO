@@ -6,6 +6,8 @@ import jwt from 'jsonwebtoken'
 import appointmentModel from '../models/appointmentModel.js'
 import userModel from '../models/userModel.js'
 import medicineModel from '../models/medicineModel.js'
+import guestRequestModel from '../models/guestRequestModel.js'
+import nurseModel from '../models/nurseModel.js'
 //API for adding doctor 
 const addDoctor = async (req, res) => {
     try {
@@ -94,7 +96,7 @@ const allDoctors = async (req, res) => {
 const appointmentsAdmin = async (req, res) => {
 
     try {
-        const appointments = await appointmentModel.find({})
+        const appointments = await appointmentModel.find({ payment: true }).sort({ date: -1 })
         res.json({ success: true, appointments })
 
 
@@ -152,7 +154,7 @@ const adminDashboard = async (req, res) => {
     try {
         const doctors = await doctorModel.find({})
         const users = await userModel.find({})
-        const appointments = await appointmentModel.find({})
+        const appointments = await appointmentModel.find({ payment: true })
 
 
         const dashData = {
@@ -223,7 +225,7 @@ const listMedicines = async (req, res) => {
 // API save prescription
 const savePrescription = async (req, res) => {
     try {
-        const { appointmentId, diagnosis, medicines } = req.body;
+        const { appointmentId, diagnosis, medicines, symptoms } = req.body;
 
         // 1. Lấy thông tin cuộc hẹn hiện tại để lấy phí khám (amount)
         const appointment = await appointmentModel.findById(appointmentId);
@@ -259,12 +261,13 @@ const savePrescription = async (req, res) => {
         const newAmount = baseFee + totalMedicineCost;
         // 4. Cập nhật Database
         await appointmentModel.findByIdAndUpdate(appointmentId, {
+            symptoms: symptoms, // <--- LƯU VÀO DB
             diagnosis: diagnosis,
             prescription: finalPrescription,
-            amount: newAmount, // Cập nhật tổng tiền mới
+            amount: newAmount,
             isPrescribed: true,
             isCompleted: true,
-            payment: false // Reset lại trạng thái thanh toán (vì tiền tăng lên, cần thu thêm)
+            payment: false
         });
 
         res.json({ success: true, message: "Lưu đơn & Cập nhật viện phí thành công" });
@@ -275,4 +278,196 @@ const savePrescription = async (req, res) => {
     }
 }
 
-export { addDoctor, loginAdmin, allDoctors, appointmentsAdmin, appointmentCancel, adminDashboard, addMedicine, listMedicines, savePrescription }
+const getPatientHistory = async (req, res) => {
+    try {
+        const { userId } = req.query; // Nhận userId từ query param
+
+        const history = await appointmentModel.find({
+            userId: userId,
+            isCompleted: true
+        }).sort({ slotDate: -1 }); // Mới nhất lên đầu
+
+        res.json({ success: true, history });
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+}
+
+/// Admin đặt lịch thủ công
+const adminBookAppointment = async (req, res) => {
+    try {
+        const { docId, slotDate, slotTime, userData, appointmentType } = req.body;
+
+        // 1. Kiểm tra/Tạo User (Shadow Account)
+        let userId = null;
+
+        // Tìm xem SĐT này đã có trong hệ thống chưa
+        const existingUser = await userModel.findOne({ phone: userData.phone });
+
+        if (existingUser) {
+            userId = existingUser._id;
+            // (Tùy chọn) Cập nhật lại tên/địa chỉ nếu Admin nhập khác
+        } else {
+            // Tạo User mới
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash("admin_created_123", salt); // Mật khẩu mặc định
+
+            const newUser = new userModel({
+                name: userData.name,
+                email: userData.email || "",
+                phone: userData.phone,
+                password: hashedPassword,
+                address: { line1: userData.address || '', line2: '' },
+                gender: userData.gender || 'Male',
+                isGuest: true // Đánh dấu khách vãng lai
+            });
+            const savedUser = await newUser.save();
+            userId = savedUser._id;
+        }
+
+        // 2. Lấy thông tin bác sĩ
+        const docData = await doctorModel.findById(docId).select('-password');
+        if (!docData.available) {
+            return res.json({ success: false, message: "Doctor is not available" });
+        }
+
+        // 3. Kiểm tra Slot (Quan trọng: Tránh trùng lặp)
+        let slots_booked = docData.slots_booked;
+        if (slots_booked[slotDate] && slots_booked[slotDate].includes(slotTime)) {
+            return res.json({ success: false, message: "Slot is already booked!" });
+        }
+
+        // 4. Tạo Appointment
+        // Snapshot data bác sĩ
+        const docDataSnapshot = docData.toObject();
+        delete docDataSnapshot.slots_booked;
+
+        const appointmentData = {
+            userId,
+            docId,
+            userData: { ...userData, speciality: docData.speciality }, // Đảm bảo lưu đủ info
+            docData: docDataSnapshot,
+            amount: docData.fees,
+            slotTime,
+            slotDate,
+            appointmentType: appointmentType || 'Clinic',
+            date: Date.now(),
+            cancelled: false,
+            payment: false,
+            isCompleted: false
+        }
+
+        const newAppointment = new appointmentModel(appointmentData);
+        await newAppointment.save();
+
+        // 5. Cập nhật Slot Bác sĩ (Đánh dấu đã bận)
+        await doctorModel.findByIdAndUpdate(docId, {
+            $push: { [`slots_booked.${slotDate}`]: slotTime }
+        });
+
+        res.json({ success: true, message: "Appointment Booked Successfully by Admin" });
+
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+}
+const getGuestRequests = async (req, res) => {
+    try {
+        // Lấy tất cả yêu cầu, sắp xếp mới nhất lên đầu
+        const requests = await guestRequestModel.find({}).sort({ date: -1 });
+        res.json({ success: true, requests });
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+}
+
+const completeGuestRequest = async (req, res) => {
+    try {
+        const { requestId } = req.body;
+
+        const requestData = await guestRequestModel.findById(requestId);
+        if (!requestData) {
+            return res.json({ success: false, message: "Request not found" });
+        }
+
+        // Cập nhật trạng thái
+        await guestRequestModel.findByIdAndUpdate(requestId, { isHandled: true });
+
+        res.json({ success: true, message: "Request marked as Completed" });
+
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+}
+
+const addNurse = async (req, res) => {
+    try {
+        const { name, email, password, speciality, degree, experience, about, fees, address } = req.body;
+        const imageFile = req.file;
+
+        // 1. Kiểm tra dữ liệu đầu vào
+        if (!name || !email || !password || !speciality || !degree || !experience || !about || !fees || !address) {
+            return res.json({ success: false, message: "Missing Details" });
+        }
+
+        // 2. Validate Email
+        if (!validator.isEmail(email)) {
+            return res.json({ success: false, message: "Please enter a valid email" });
+        }
+
+        // 3. Validate Password
+        if (password.length < 8) {
+            return res.json({ success: false, message: "Please enter a strong password" });
+        }
+
+        // 4. Hash Password
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        // 5. Upload Image lên Cloudinary
+        const imageUpload = await cloudinary.uploader.upload(imageFile.path, { resource_type: "image" });
+        const imageUrl = imageUpload.secure_url;
+
+        // 6. Parse dữ liệu JSON từ Frontend
+        // Frontend gửi speciality dưới dạng chuỗi '["A", "B"]' -> Cần parse thành Mảng ["A", "B"]
+        let specialityArray = [];
+        try {
+            specialityArray = JSON.parse(speciality);
+        } catch (error) {
+            // Fallback: nếu gửi dạng string thường cách nhau dấu phẩy
+            specialityArray = typeof speciality === 'string' ? speciality.split(',') : [speciality];
+        }
+
+        const nurseData = {
+            name,
+            email,
+            image: imageUrl,
+            password: hashedPassword,
+            speciality: specialityArray, // Lưu dưới dạng Mảng
+            degree,
+            experience,
+            about,
+            fees,
+            address: JSON.parse(address), // Parse địa chỉ
+            date: Date.now()
+        }
+
+        // 7. Lưu vào Database
+        const newNurse = new nurseModel(nurseData);
+        await newNurse.save();
+
+        res.json({ success: true, message: "Nurse Added Successfully" });
+
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+}
+export {
+    addDoctor, loginAdmin, allDoctors, appointmentsAdmin, appointmentCancel, adminDashboard, addMedicine, listMedicines,
+    savePrescription, getPatientHistory, adminBookAppointment, getGuestRequests, completeGuestRequest, addNurse
+}

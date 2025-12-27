@@ -14,6 +14,9 @@ import { ToastContainer, toast } from 'react-toastify';
 import ChatBot from './components/Chatbot.jsx';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import "slick-carousel/slick/slick.css";
+import "slick-carousel/slick/slick-theme.css";
+import Nurses from './pages/Nurses.jsx';
 const App = () => {
   return (
     <div className='mx-4 sm:mx-[10%]'>
@@ -23,6 +26,7 @@ const App = () => {
         <Route path='/' element={<Home />} />
         <Route path='/doctors' element={<Doctors />} />
         <Route path='/doctors/:speciality' element={<Doctors />} />
+        <Route path='/nurse/:speciality' element={<Nurses />} />
         <Route path='/login' element={<Login />} />
         <Route path='/my-appointments' element={<MyAppointments />} />
         <Route path='/my-profile' element={<MyProfile />} />

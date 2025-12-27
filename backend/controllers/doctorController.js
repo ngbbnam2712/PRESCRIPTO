@@ -65,7 +65,7 @@ const loginDoctor = async (req, res) => {
 const appointmentsDoctor = async (req, res) => {
     try {
         const docId = req.docId
-        const appointments = await appointmentModel.find({ docId })
+        const appointments = await appointmentModel.find({ docId, payment: true }).sort({ date: -1 })
         res.json({ success: true, appointments })
     } catch (error) {
         console.log(error)
@@ -135,7 +135,7 @@ const doctorDashboard = async (req, res) => {
     try {
         const docId = req.docId
 
-        const appointments = await appointmentModel.find({ docId })
+        const appointments = await appointmentModel.find({ docId, payment: true })
 
         let earnings = 0
         let patients = [];
@@ -208,5 +208,22 @@ const getDoctorReviews = async (req, res) => {
         res.json({ success: false, message: error.message });
     }
 }
+const getPatientHistory = async (req, res) => {
+    try {
+        const { userId } = req.query;
 
-export { changeAvailablity, doctorList, loginDoctor, appointmentsDoctor, appointmentComplete, appointmentCancel, doctorDashboard, doctorProfile, updateDoctorProfile, getDoctorReviews }
+        // Tìm tất cả cuộc hẹn ĐÃ HOÀN THÀNH của bệnh nhân này (với bất kỳ bác sĩ nào)
+        // Để bác sĩ tham khảo được tiểu sử bệnh lý toàn diện
+        const history = await appointmentModel.find({
+            userId: userId,
+            isCompleted: true
+        }).sort({ slotDate: -1 });
+
+        res.json({ success: true, history });
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+}
+
+export { changeAvailablity, doctorList, loginDoctor, appointmentsDoctor, appointmentComplete, appointmentCancel, doctorDashboard, doctorProfile, updateDoctorProfile, getDoctorReviews, getPatientHistory }

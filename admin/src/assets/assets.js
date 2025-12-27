@@ -27,3 +27,16 @@ export const assets = {
     appointments_icon,
     earning_icon
 }
+
+
+
+
+export const nurseSpecialityData = [
+    "Basic Checkup",
+    "Advanced Checkup",
+    "VIP Checkup",
+    "Men's Health",
+    "Women's Health",
+    "Pediatrics",
+    "Geriatrics"
+];

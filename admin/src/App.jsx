@@ -14,8 +14,8 @@ import { DoctorContext } from './context/DoctorContext.jsx'
 import DoctorDashboard from './pages/Doctor/DoctorDashboard.jsx'
 import DoctorAppointments from './pages/Doctor/DoctorAppointments.jsx'
 import DoctorProfile from './pages/Doctor/DoctorProfile.jsx'
-
-
+import GuestList from './pages/Admin/GuestList.jsx'
+import AddNurse from './pages/Admin/AddNurse.jsx'
 
 export const App = () => {
 
@@ -37,7 +37,8 @@ export const App = () => {
           <Route path='/all-appointments' element={<AllAppointments />}></Route>
           <Route path='/add-doctor' element={<AddDoctor />}></Route>
           <Route path='/doctor-list' element={<DoctorList />}></Route>
-
+          <Route path='/add-nurse' element={<AddNurse />} />
+          <Route path='/guest-requests' element={<GuestList />} />
 
           //doctor route
           <Route path='/doctor-dashboard' element={<DoctorDashboard />} />

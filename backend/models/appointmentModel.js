@@ -19,7 +19,9 @@ const appointmentSchema = new mongoose.Schema({
         default: 'Pending'
     },
     isReviewed: { type: Boolean, default: false },
+    isRefund: { type: Boolean, default: false },
     diagnosis: { type: String, default: '' }, // Chẩn đoán bệnh
+    symptoms: { type: String, default: '' },
     prescription: [ // Mảng chi tiết đơn thuốc
         {
             medicineId: { type: mongoose.Schema.Types.ObjectId, ref: 'medicine' },
@@ -29,7 +31,8 @@ const appointmentSchema = new mongoose.Schema({
             price: { type: Number } // Lưu giá tại thời điểm kê đơn
         }
     ],
-    isPrescribed: { type: Boolean, default: false }
+    isPrescribed: { type: Boolean, default: false },
+    appointmentType: { type: String, default: 'Clinic' }
 }, {
     timestamps: true
 });

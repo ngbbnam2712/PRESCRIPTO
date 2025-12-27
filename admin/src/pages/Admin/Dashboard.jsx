@@ -80,7 +80,10 @@ const Dashboard = () => {
 
               {/* Hiển thị số sao */}
               <div className='flex items-center gap-1 mt-2'>
-                <p className='text-yellow-500 font-bold text-xl'>{item.averageRating || 0}</p>
+                {/* SỬA TẠI ĐÂY: Dùng Number().toFixed(1) */}
+                <p className='text-yellow-500 font-bold text-xl'>
+                  {Number(item.averageRating || 0).toFixed(1)}
+                </p>
                 <span className='text-yellow-500'>★</span>
                 <p className='text-xs text-gray-400'>({item.totalRatings || 0} reviews)</p>
               </div>
@@ -98,24 +101,52 @@ const Dashboard = () => {
 
 
         <div className='pt-4 border border-t-0'>
-          {
-            dashData.latestAppointments.map((item, index) => (
-              <div className='flex items-center px-6 py-3 gap-3 hover:bg-gray-100' key={index}>
-                <img className='rounded-full w-10' src={item.docData.image} alt="" />
-                <div className='flex-1 text-sm'>
-                  <p className='text-gray-800 font-medium'>{item.docData.name}</p>
-                  <p className='text-gray-600'>{slotDateFormat(item.slotDate)}</p>
+          {dashData.latestAppointments.map((item, index) => (
+            <div className='flex items-center px-6 py-3 gap-3 hover:bg-gray-100 border-b last:border-0' key={index}>
+
+              {/* 1. Ảnh đại diện Bác sĩ */}
+              <img className='rounded-full w-10 h-10 object-cover' src={item.docData.image} alt="" />
+
+              {/* 2. Thông tin chi tiết (Tên, Ngày Giờ, Mode) */}
+              <div className='flex-1 text-sm'>
+                <p className='text-gray-800 font-medium'>{item.docData.name}</p>
+
+                {/* Dòng phụ: Ngày giờ + Badge Mode */}
+                <div className='flex items-center gap-2 mt-1'>
+                  {/* Ngày & Giờ */}
+                  <p className='text-gray-600 text-xs'>
+                    {slotDateFormat(item.slotDate)}, {item.slotTime}
+                  </p>
+
+                  {/* Badge hiển thị Mode (Giống AllAppointments) */}
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full border ${item.appointmentType === 'Remote'
+                      ? 'bg-indigo-50 text-indigo-600 border-indigo-200'
+                      : 'bg-green-50 text-green-600 border-green-200'
+                    }`}>
+                    {item.appointmentType === 'Remote' ? 'Remote' : 'Clinic'}
+                  </span>
                 </div>
-                {
-                  item.cancelled
-                    ? <p className='text-red-400 text-xs font-medium'>Cancelled</p>
-                    : item.isCompleted
-                      ? <p className='text-green-500 text-xs font-medium '>Completed</p>
-                      : <img onClick={() => cancelAppointment(item._id)} className='w-10 cursor-pointer' src={assets.cancel_icon} alt="" />
-                }
               </div>
-            ))
-          }
+
+              {/* 3. Trạng thái / Nút Hủy */}
+              <div className='min-w-[80px] text-right'>
+                {item.cancelled ? (
+                  <p className='text-red-400 text-xs font-medium'>Cancelled</p>
+                ) : item.isCompleted ? (
+                  <p className='text-green-500 text-xs font-medium'>Completed</p>
+                ) : (
+                  <img
+                    onClick={() => cancelAppointment(item._id)}
+                    className='w-10 cursor-pointer opacity-80 hover:opacity-100 transition-opacity'
+                    src={assets.cancel_icon}
+                    alt="Cancel"
+                    title="Cancel Appointment"
+                  />
+                )}
+              </div>
+
+            </div>
+          ))}
         </div>
       </div>
     </div >

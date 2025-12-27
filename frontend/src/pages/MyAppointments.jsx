@@ -81,13 +81,21 @@ const MyAppointments = () => {
 
   }
 
-  const cancelAppointment = async (appointmentId) => {
-    // 1. Thêm xác nhận từ trình duyệt (UX quan trọng)
-    // Người dùng bấm OK mới hủy, bấm Cancel thì thôi.
-    if (!window.confirm("Bạn có chắc chắn muốn hủy cuộc hẹn này không?")) {
-      return;
+  const cancelAppointment = async (appointmentId, payment) => {
+
+    let confirmMessage = "";
+
+    if (payment) {
+      // Trường hợp Refund
+      confirmMessage = "Cuộc hẹn này ĐÃ THANH TOÁN.\nNếu hủy, bạn sẽ được hoàn tiền sau 3-5 ngày và nhận được email xác nhận.\nBạn có chắc chắn muốn hủy?";
+    } else {
+      // Trường hợp Hủy thường
+      confirmMessage = "Bạn có chắc chắn muốn hủy cuộc hẹn này không?";
     }
 
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
     try {
       const { data } = await axios.post(
         backendUrl + '/api/user/cancel-appointment',
@@ -98,13 +106,11 @@ const MyAppointments = () => {
       if (data.success) {
         toast.success(data.message)
 
-        // 2. Tải lại danh sách lịch hẹn
-        // Để cập nhật trạng thái UI từ "Pending" -> "Cancelled" ngay lập tức
-        getUserAppointments()
 
-        // 3. Tải lại danh sách bác sĩ
-        // Để mở lại slot (khung giờ) đó cho người khác đặt
-        getDoctorsData()
+        await getUserAppointments()
+
+
+
 
       } else {
         toast.error(data.message)
@@ -115,6 +121,8 @@ const MyAppointments = () => {
       toast.error(error.message)
     }
   }
+
+
   const appointmentPayment = async (appointmentId) => {
     try {
       // Gọi API tạo PayPal Payment
@@ -135,6 +143,60 @@ const MyAppointments = () => {
       toast.error(error.message)
     }
   }
+
+
+  const checkMeetingTime = (slotDate, slotTime) => {
+    try {
+      // 1. Lấy ngày tháng năm hiện tại
+      const now = new Date();
+
+      // 2. Parse slotDate (dạng "25_12_2025")
+      const [day, month, year] = slotDate.split('_').map(Number);
+
+      // 3. Parse slotTime (dạng "10:30 AM")
+      let [time, modifier] = slotTime.split(' ');
+      let [hours, minutes] = time.split(':').map(Number);
+
+      // Đổi sang 24h
+      if (modifier === 'PM' && hours < 12) hours += 12;
+      if (modifier === 'AM' && hours === 12) hours = 0;
+
+      // 4. Tạo đối tượng Date cho cuộc hẹn
+      const appointmentStart = new Date(year, month - 1, day, hours, minutes);
+
+      // Tạo thời gian cho phép vào (Ví dụ: Trước 10 phút)
+      const entryStart = new Date(appointmentStart.getTime() - 10 * 60000); // Trừ 10 phút
+
+      // Tạo thời gian kết thúc (Ví dụ: Sau khi bắt đầu 40 phút thì hết hạn)
+      const entryEnd = new Date(appointmentStart.getTime() + 40 * 60000); // Cộng 40 phút
+
+      // 5. So sánh
+      return now >= entryStart && now <= entryEnd;
+
+    } catch (error) {
+      console.error("Lỗi parse thời gian:", error);
+      return false;
+    }
+  };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   useEffect(() => {
     if (searchParams.get('success') === 'true') {
@@ -177,6 +239,14 @@ const MyAppointments = () => {
             <div className='flex-1 text-sm text-zinc-600'>
               <p className='text-neutral-800 font-semibold'>{item.docData.name}</p>
               <p>{item.docData.speciality}</p>
+              <div className='mt-2 mb-1'>
+                <span className={`text-xs font-bold px-2 py-1 rounded border ${item.appointmentType === 'Remote'
+                  ? 'bg-indigo-50 text-indigo-600 border-indigo-200'
+                  : 'bg-green-50 text-green-600 border-green-200'
+                  }`}>
+                  {item.appointmentType === 'Remote' ? '💻 Remote Consultation' : '🏥 At Clinic'}
+                </span>
+              </div>
               <p className='text-zinc-700 font-medium mt-1 '>Address:</p>
               <p className='text-xs'>{item.docData.address.line1}</p>
               <p className='text-xs'>{item.docData.address.line2}</p>
@@ -205,10 +275,10 @@ const MyAppointments = () => {
 
                   {/* Nút Hủy Lịch */}
                   <button
-                    onClick={() => cancelAppointment(item._id)}
+                    onClick={() => cancelAppointment(item._id, item.payment)}
                     className='text-sm text-stone-500 text-center sm:min-w-48 py-2 border rounded hover:bg-red-500 hover:text-white transition-all duration-300'
                   >
-                    Cancel Appointment
+                    {item.payment ? 'Cancel & Refund' : 'Cancel Appointment'}
                   </button>
                 </>
               )}
@@ -240,6 +310,32 @@ const MyAppointments = () => {
                     </button>
                   )}
                 </>
+              )}
+              {item.appointmentType === 'Remote' && !item.cancelled && !item.isCompleted && (
+                <div className='mr-2'> {/* Thêm margin phải để tách khỏi nút khác */}
+                  {checkMeetingTime(item.slotDate, item.slotTime) ? (
+                    // ĐÚNG GIỜ -> NÚT SÁNG
+                    <div
+                      onClick={() => handleJoinVideoCall(item._id)}
+                      className='w-10 h-10 flex items-center justify-center rounded-full bg-indigo-600 hover:bg-indigo-700 cursor-pointer transition-all shadow-lg text-white animate-bounce'
+                      title="Join Video Call Now"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263-12.63a1.5 1.5 0 00-1.794-1.794l-12.63 1.263a3.75 3.75 0 105.486 5.486L19.5 3.51z" />
+                      </svg>
+                    </div>
+                  ) : (
+                    // CHƯA ĐẾN GIỜ -> NÚT MỜ
+                    <div
+                      className='w-10 h-10 flex items-center justify-center rounded-full bg-gray-200 cursor-not-allowed text-gray-400'
+                      title={`Chưa đến giờ hẹn (${item.slotTime})`}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
               )}
 
             </div>

@@ -1,7 +1,8 @@
 import express from 'express';
 import {
-    registerUser, loginUser, getProfile, updateProfile, bookAppointment, listAppointments, cancelAppointment, createPayPalPayment, executePayPalPayment, chatWithAI,
-    forgotPassword, resetPassword, addReview, getUserNotifications
+    registerUser, loginUser, getProfile, updateProfile, bookAppointment, bookGuestAppointment, listAppointments, cancelAppointment, createPayPalPayment, executePayPalPayment
+    , createGuestPayment, executeGuestPayment, chatWithAI,
+    forgotPassword, resetPassword, addReview, getUserNotifications, getAllNurses
 } from '../controllers/userController.js';
 import authUser from '../middlewares/authUser.js';
 import upload from '../middlewares/multer.js';
@@ -16,7 +17,7 @@ userRouter.post('/reset-password', resetPassword);
 userRouter.get('/get-profile', authUser, getProfile)
 
 userRouter.post('/update-profile', upload.single('image'), authUser, updateProfile)
-userRouter.post('/book-appointment', authUser, bookAppointment)
+userRouter.post('/book-appointment', authUser, bookAppointment);
 userRouter.get('/appointments', authUser, listAppointments)
 userRouter.post('/cancel-appointment', authUser, cancelAppointment)
 
@@ -25,9 +26,16 @@ userRouter.post('/cancel-appointment', authUser, cancelAppointment)
 userRouter.post('/payment-paypal', authUser, createPayPalPayment)
 userRouter.get('/paypal-return', executePayPalPayment)
 userRouter.get('/paypal-cancel', (req, res) => res.send('Cancelled')) // Simple cancel handler
+
+
 ///chat with AI
 userRouter.post('/chat-ai', chatWithAI);
 userRouter.post('/add-review', authUser, addReview);
 userRouter.get('/notifications', authUser, getUserNotifications);
 
+
+userRouter.post('/book-guest-appointment', bookGuestAppointment);
+userRouter.post('/create-guest-payment', createGuestPayment);
+userRouter.get('/payment-execute', executeGuestPayment);
+userRouter.get('/get-nurses', getAllNurses);
 export default userRouter

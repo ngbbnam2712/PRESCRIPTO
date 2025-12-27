@@ -94,7 +94,24 @@ const DoctorContextProvider = (props) => {
             toast.error(error.message)
         }
     }
-
+    const loadPatientHistory = async (userId) => {
+        try {
+            const { data } = await axios.get(backendUrl + '/api/doctor/patient-history', {
+                params: { userId },
+                headers: { dToken } // Dùng dToken của bác sĩ
+            })
+            if (data.success) {
+                return data.history
+            } else {
+                toast.error(data.message)
+                return []
+            }
+        } catch (error) {
+            console.log(error)
+            toast.error(error.message)
+            return []
+        }
+    }
     const value = {
         backendUrl,
         dToken, setDToken,
@@ -102,7 +119,8 @@ const DoctorContextProvider = (props) => {
         getAppointments,
         completeAppointment, cancelAppointment,
         dashData, setDashData, getDashData,
-        profileData, setProfileData, getProfileData
+        profileData, setProfileData, getProfileData,
+        loadPatientHistory,
     }
     return (
         <DoctorContext.Provider value={value}>
