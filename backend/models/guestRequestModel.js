@@ -22,6 +22,6 @@ const guestRequestSchema = new mongoose.Schema({
     date: { type: Number, required: true }      // Thời gian gửi form
 });
 
-const guestRequestModel = mongoose.models.guestRequest || mongoose.model("guestRequest", guestRequestSchema);
+const guestRequestModel = mongoose.model("guestRequest", guestRequestSchema);
 
 export default guestRequestModel;

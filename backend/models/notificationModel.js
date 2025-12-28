@@ -1,12 +1,56 @@
 import mongoose from "mongoose";
 
 const notificationSchema = new mongoose.Schema({
-    userId: { type: String, required: true }, // Người nhận thông báo
-    content: { type: String, required: true }, // Nội dung: "Lịch hẹn ngày 12/12 đã bị hủy"
-    isRead: { type: Boolean, default: false }, // Đã đọc chưa
-    type: { type: String, default: 'System' }, // Loại: 'System', 'Appointment', 'Promotion'
-    createdAt: { type: Date, default: Date.now }
-});
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+    },
 
-const notificationModel = mongoose.models.notification || mongoose.model("notification", notificationSchema);
+    doctorId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Doctor",
+    },
+
+    appointmentId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Appointment",
+    },
+
+    message: {
+        type: String,
+        required: true,
+        trim: true,
+    },
+
+    type: {
+        type: String,
+        enum: [
+            "appointment",
+            "payment",
+            "system",
+            "reminder"
+        ],
+        default: "system",
+    },
+
+    isRead: {
+        type: Boolean,
+        default: false,
+    },
+
+    sentAt: {
+        type: Date,
+        default: Date.now,
+    },
+
+    metadata: {
+        type: Object,
+        default: {},
+    },
+},
+    { timestamps: true }
+);
+
+const notificationModel = mongoose.model("Notification", notificationSchema);
 export default notificationModel;

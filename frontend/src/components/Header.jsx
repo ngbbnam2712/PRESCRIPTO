@@ -40,13 +40,13 @@ const Header = () => {
          HERO SECTION & QUICK BOOKING FORM
         ========================================
       */}
-            <div className="relative w-full">
-                {/* Container nền xanh nhạt */}
+            {/* <div className="relative w-full">
+            
                 <div className="bg-blue-50 w-full min-h-[600px] flex items-center py-10">
 
                     <div className="container mx-auto px-4 w-full flex flex-col lg:flex-row items-center justify-between gap-10">
 
-                        {/* Cột trái: Text giới thiệu & Lợi ích */}
+                       
                         <div className="w-full lg:w-1/2">
                             <div className="text-4xl lg:text-5xl font-bold text-blue-900 mb-6 leading-tight">
                                 MEDICAL PLATFORM <br />
@@ -74,14 +74,14 @@ const Header = () => {
                             </div>
                         </div>
 
-                        {/* Cột phải: Form đặt lịch (QuickBookingForm) */}
+                        
                         <div id="booking-section" className="w-full lg:w-1/2 flex justify-center lg:justify-end">
                             <QuickBookingForm />
                         </div>
 
                     </div>
                 </div>
-            </div>
+            </div> */}
         </React.Fragment>
     );
 };

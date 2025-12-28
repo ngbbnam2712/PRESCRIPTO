@@ -6,7 +6,7 @@ const AppContextProvider = (props) => {
 
 
 
-    const currency = '$'
+    const currency = 'VND'
     const calculateAge = (dob) => {
         // 1. Kiểm tra đầu vào có tồn tại không
         if (!dob) return 'N/A';

@@ -8,7 +8,7 @@ export const AppContext = createContext()
 const AppContextProvider = (props) => {
 
 
-    const currencySymbol = "$"
+    const currencySymbol = "VND"
 
     const backendUrl = import.meta.env.VITE_BACKEND_URL
     const [doctors, setDoctors] = useState([])
@@ -20,8 +20,11 @@ const AppContextProvider = (props) => {
     const loadUserProfileData = async () => {
         try {
             const { data } = await axios.get(backendUrl + '/api/user/get-profile', { headers: { token } })
+
             if (data.success) {
-                setUserData(data.message)
+                // QUAN TRỌNG: Đổi data.message thành data.userData
+                // Vì Backend trả về: res.json({ success: true, userData })
+                setUserData(data.userData)
             } else {
                 toast.error(data.message)
                 setUserData(false)
@@ -34,7 +37,7 @@ const AppContextProvider = (props) => {
 
 
 
-    const getDoctorsData = async () => {
+    const getDoctorsData = async (res, req) => {
         try {
 
             const { data } = await axios.get(backendUrl + '/api/doctor/list')
@@ -73,11 +76,6 @@ const AppContextProvider = (props) => {
         loadUserProfileData,
         nurses, getNursesData,
     }
-
-    useEffect(() => {
-        getDoctorsData()
-    }, [])
-
 
     useEffect(() => {
         if (token) {

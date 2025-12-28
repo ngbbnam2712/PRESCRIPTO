@@ -8,10 +8,12 @@ import userModel from '../models/userModel.js'
 import medicineModel from '../models/medicineModel.js'
 import guestRequestModel from '../models/guestRequestModel.js'
 import nurseModel from '../models/nurseModel.js'
+import specializationModel from "../models/SpecializationModel.js"
+import Specialization from '../models/SpecializationModel.js'
 //API for adding doctor 
 const addDoctor = async (req, res) => {
     try {
-        const { name, email, password, speciality, degree, experience, about, fees, address } = req.body
+        const { name, email, password, speciality, specializationId, degree, experience, about, fees, address } = req.body
         const imageFile = req.file
 
         //check exits doctor
@@ -42,6 +44,7 @@ const addDoctor = async (req, res) => {
             image: imageUrl,
             password: hashedPassword,
             speciality,
+            specializationId,
             degree,
             experience,
             about,
@@ -467,7 +470,70 @@ const addNurse = async (req, res) => {
         res.json({ success: false, message: error.message });
     }
 }
+const addSpeciality = async (req, res) => {
+    try {
+        const { name, code, description, floor, defaultFee, isActive } = req.body;
+        const imageFile = req.file;
+
+        // 1. Validate dữ liệu cơ bản
+        if (!name || !code || !floor || !defaultFee) {
+            return res.json({ success: false, message: "Vui lòng điền đầy đủ các trường bắt buộc" });
+        }
+
+        if (!imageFile) {
+            return res.json({ success: false, message: "Vui lòng chọn ảnh đại diện" });
+        }
+
+        // 2. Upload ảnh lên Cloudinary
+        const imageUpload = await cloudinary.uploader.upload(imageFile.path, {
+            resource_type: "image"
+        });
+        const imageUrl = imageUpload.secure_url;
+
+        // 3. Chuẩn bị dữ liệu (FormData gửi lên đều là string, cần ép kiểu)
+        const specializationData = {
+            name,
+            code, // Đã uppercase ở frontend, nhưng có thể thêm .toUpperCase() ở đây để chắc chắn
+            description: description || "",
+            floor: Number(floor),
+            defaultFee: Number(defaultFee),
+            isActive: isActive === 'true', // Chuyển string "true"/"false" sang boolean
+            image: imageUrl
+        };
+
+        // 4. Lưu vào Database
+        const newSpecialization = new specializationModel(specializationData);
+        await newSpecialization.save();
+
+        res.json({ success: true, message: "Thêm chuyên khoa thành công!" });
+
+    } catch (error) {
+        console.log(error);
+        // Xử lý lỗi trùng lặp key (duplicate key error code: 11000)
+        if (error.code === 11000) {
+            return res.json({ success: false, message: "Tên chuyên khoa hoặc Mã (Code) đã tồn tại!" });
+        }
+        res.json({ success: false, message: error.message });
+    }
+}
+
+
+const getSpecialityList = async (req, res) => {
+    try {
+        // Lấy tất cả các bản ghi, chỉ lấy các trường cần thiết nếu muốn tối ưu (ở đây lấy hết)
+        const specialities = await Specialization.find({});
+
+        res.json({
+            success: true,
+            specialities // Trả về mảng dữ liệu
+        });
+
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+}
 export {
     addDoctor, loginAdmin, allDoctors, appointmentsAdmin, appointmentCancel, adminDashboard, addMedicine, listMedicines,
-    savePrescription, getPatientHistory, adminBookAppointment, getGuestRequests, completeGuestRequest, addNurse
+    savePrescription, getPatientHistory, adminBookAppointment, getGuestRequests, completeGuestRequest, addNurse, addSpeciality, getSpecialityList
 }

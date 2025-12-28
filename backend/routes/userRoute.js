@@ -15,7 +15,6 @@ userRouter.post('/login', loginUser)
 userRouter.post('/forgot-password', forgotPassword);
 userRouter.post('/reset-password', resetPassword);
 userRouter.get('/get-profile', authUser, getProfile)
-
 userRouter.post('/update-profile', upload.single('image'), authUser, updateProfile)
 userRouter.post('/book-appointment', authUser, bookAppointment);
 userRouter.get('/appointments', authUser, listAppointments)

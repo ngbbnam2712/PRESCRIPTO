@@ -2,17 +2,17 @@ import React, { useContext, useEffect, useState } from 'react'
 import { AppContext } from '../context/AppContext'
 import { useNavigate } from 'react-router-dom'
 
-const RelatedDoctors = ({ speciality, docId }) => {
+const RelatedDoctors = ({ speciality, doctorId }) => {
     const { doctors } = useContext(AppContext)
     const navigate = useNavigate()
     const [relDoc, setRelDoc] = useState([])
     useEffect(() => {
         if (doctors.length > 0 && speciality) {
-            const doctorsData = doctors.filter((doc) => doc.speciality === speciality && doc._id !== docId)
+            const doctorsData = doctors.filter((doc) => doc.speciality === speciality && doc._id !== doctorId)
             setRelDoc(doctorsData)
             console.log(doctorsData);
         }
-    }, [doctors, speciality, docId])
+    }, [doctors, speciality, doctorId])
 
     return (
         <div className='flex flex-col items-center gap-4 my-16 text-gray-900 md:mx-10'>

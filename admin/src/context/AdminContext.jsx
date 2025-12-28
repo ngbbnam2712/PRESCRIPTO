@@ -30,9 +30,9 @@ const AdminContextProvider = (props) => {
     }
 
 
-    const changeAvailability = async (docId) => {
+    const changeAvailability = async (doctorId) => {
         try {
-            const { data } = await axios.post(backendUrl + '/api/admin/change-availability', { docId }, { headers: { aToken } })
+            const { data } = await axios.post(backendUrl + '/api/admin/change-availability', { doctorId }, { headers: { aToken } })
             if (data.success) {
                 toast.success(data.message)
                 getAllDoctors()
@@ -49,7 +49,7 @@ const AdminContextProvider = (props) => {
         try {
             const { data } = await axios.get(backendUrl + '/api/admin/appointments', { headers: { aToken } })
             if (data.success) {
-                setAppointments(data.appointments)
+                setAppointments(data.appointments.reverse())
                 console.log(data.appointments)
             } else {
                 toast.error(data.message)

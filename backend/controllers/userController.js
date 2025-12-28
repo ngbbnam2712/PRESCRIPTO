@@ -23,107 +23,59 @@ import nurseModel from "../models/nurseModel.js";
 
 
 const registerUser = async (req, res) => {
-
-
-
     try {
+        // 1. Nhận đủ dữ liệu từ Frontend gửi lên
+        const { name, email, password, phone, dob, gender } = req.body;
 
-        const { name, email, password } = req.body
+        // 2. Kiểm tra xem có thiếu trường nào không
+        if (!name || !email || !password || !phone || !dob || !gender) {
+            // Sửa lỗi chính tả 'sucess' -> 'success'
+            return res.status(400).json({ success: false, message: "Missing Details! Please fill all fields." });
+        }
 
-
-
-        //check exist
-
+        // 3. Kiểm tra Email đã tồn tại chưa
         const exists = await userModel.findOne({ email });
-
         if (exists) {
-
-            return res.status(409).json({ success: false, message: "User already exists" }); // 409 Conflict
-
+            return res.status(409).json({ success: false, message: "User already exists" });
         }
 
-
-
-        if (!name || !email || !password) {
-
-            return res.json({ sucess: false, message: "Missing Details!" })
-
-        }
-
+        // 4. Validate định dạng Email
         if (!validator.isEmail(email)) {
-
-            return res.json({ success: false, message: "Enter A Invalid Email" })
-
+            return res.json({ success: false, message: "Please enter a valid email" });
         }
 
-
-
-
-
-
-
+        // 5. Validate độ mạnh mật khẩu
         if (password.length < 8) {
-
-            return res.json({ success: false, message: "Enter A Strong Password" })
-
+            return res.json({ success: false, message: "Password must be at least 8 characters" });
         }
 
+        // 6. Mã hóa mật khẩu
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
 
-
-
-
-        //hash password
-
-
-
-        const salt = await bcrypt.genSalt(10)
-
-        const hashedPassword = await bcrypt.hash(password, salt)
-
-
-
+        // 7. Tạo Object User mới với đầy đủ thông tin
         const userData = {
-
             name,
-
             email,
+            password: hashedPassword,
+            phone,
+            dob,
+            gender,
+        };
 
-            password: hashedPassword
+        const newUser = new userModel(userData);
+        const user = await newUser.save();
 
-        }
+        // 8. Tạo Token và trả về
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
 
-
-
-
-
-        const newUser = new userModel(userData)
-
-        const user = await newUser.save()
-
-
-
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET)
-
-        res.json({ success: true, token })
-
-
-
-
+        // Trả về 201 (Created) thay vì 200
+        res.status(201).json({ success: true, token });
 
     } catch (error) {
-
-        console.log(error)
-
-        res.json({ success: false, message: error.message })
-
+        console.log(error);
+        res.status(500).json({ success: false, message: error.message });
     }
-
-
-
-
-
-
-
 }
 
 //API to login user
@@ -206,7 +158,7 @@ const getProfile = async (req, res) => {
 
 
 
-        return res.status(200).json({ success: true, message: userData })
+        return res.status(200).json({ success: true, userData })
 
 
 
@@ -355,11 +307,14 @@ const updateProfile = async (req, res) => {
 const bookAppointment = async (req, res) => {
     try {
         const userId = req.userId
+        console.log(req.body)
         const { docId, slotDate, slotTime, appointmentType } = req.body;
-
+        if (!docId || !slotDate || !slotTime) {
+            return res.json({ success: false, message: "Missing required fields (docId, slotDate, or slotTime)" });
+        }
         const docData = await doctorModel.findById(docId).select('-password');
 
-        if (!docData.available) {
+        if (!docData) {
             return res.json({ success: false, message: "Doctor not available" });
         }
 
@@ -382,7 +337,8 @@ const bookAppointment = async (req, res) => {
 
         const appointmentData = {
             userId,
-            docId,
+            doctorId: docId,
+            specializationId: docData.specializationId,
             userData,
             docData: docDataSnapshot,
             amount: docData.fees,
@@ -516,8 +472,8 @@ const cancelAppointment = async (req, res) => {
         // Cập nhật trạng thái hủy vào DB
         await appointmentModel.findByIdAndUpdate(appointmentId, updateData);
         /// trả lại slot
-        const docId = appointmentData.docId;
-        const doctorData = await doctorModel.findById(docId);
+        const { doctorId, slotDate, slotTime } = appointmentData;
+        const doctorData = await doctorModel.findById(doctorId);
 
         if (doctorData) {
             let slots_booked = doctorData.slots_booked;
@@ -546,25 +502,6 @@ const cancelAppointment = async (req, res) => {
             } else {
                 console.log(`⚠️ Ngày ${slotDate} không tồn tại trong Map.`);
             }
-        }
-
-        if (appointmentData.payment) {
-            const userEmail = appointmentData.userId.email || appointmentData.userData.email;
-            const userName = appointmentData.userId.name || appointmentData.userData.name;
-
-            // Gọi hàm gửi mail báo hoàn tiền
-            sendCancellationEmail({
-                email: userEmail,
-                name: userName,
-                docName: appointmentData.docData.name,
-                date: appointmentData.slotDate,
-                time: appointmentData.slotTime,
-                isRefund: true // Chắc chắn là true vì nằm trong if payment
-            }).catch(err => console.log("Lỗi gửi mail hủy:", err.message));
-
-            console.log(`📧 Đã gửi mail hoàn tiền cho user: ${userEmail}`);
-        } else {
-            console.log(`ℹ️ Cuộc hẹn chưa thanh toán, không cần gửi mail hủy.`);
         }
 
 
@@ -602,7 +539,7 @@ const createPayPalPayment = async (req, res) => {
         }
 
         // amout = fees
-        const totalAmount = appointment.amount.toString();
+        const totalAmount = (appointment.amount / 25000).toString();
 
         const create_payment_json = {
             "intent": "sale",
@@ -724,8 +661,8 @@ const createGuestPayment = async (req, res) => {
 
         // Lấy tên bác sĩ (để hiển thị trong PayPal bill cho đẹp)
         let docName = "General Consultation";
-        if (docId) {
-            const doc = await doctorModel.findById(docId);
+        if (doctorId) {
+            const doc = await doctorModel.findById(doctorId);
             if (doc) docName = doc.name;
         }
         const finalAmount = formatPrice(amount); // Chuyển "10" thành "10.00"
@@ -893,7 +830,7 @@ const chatWithAI = async (req, res) => {
             currentUser = await userModel.findById(userId).select('-password');
             if (currentUser) {
                 userAppointments = await appointmentModel.find({ userId: userId })
-                    .select('_id docId slotDate slotTime isCompleted cancelled docData amount');
+                    .select('_id doctorId slotDate slotTime isCompleted cancelled docData amount');
             }
         }
 
@@ -950,7 +887,7 @@ const chatWithAI = async (req, res) => {
             4. LOẠI 4: CHUẨN BỊ ĐẶT LỊCH CHO GUEST (type: "guest_booking_ready")
                - KHI NÀO: Khách chốt đặt lịch hoặc thể hiện ý định rõ ràng muốn đặt.
                - HÀNH ĐỘNG: Ngừng hỏi thông tin
-    5. LOẠI 5:"health_advice": TƯ VẤN SỨC KHỎE / TRIỆU CHỨNG
+            5. LOẠI 5:"health_advice": TƯ VẤN SỨC KHỎE / TRIỆU CHỨNG
                - KHI NÀO: Khách mô tả triệu chứng (đau, sốt, mệt, cần lời khuyên y tế...).
                - OUTPUT BẮT BUỘC: 
                  {
@@ -958,7 +895,7 @@ const chatWithAI = async (req, res) => {
                     "prediction": "Dự đoán bệnh sơ bộ (ngắn gọn)",
                     "home_care": "Lời khuyên chăm sóc tại nhà (gạch đầu dòng)",
                     "specialty": "Tên chuyên khoa nên khám (Ví dụ: General physician, Neurologist...)",
-                    "suggested_docId": "ID của bác sĩ phù hợp nhất trong danh sách (nếu có, hoặc null)"
+                    "suggested_doctorId": "ID của bác sĩ phù hợp nhất trong danh sách (nếu có, hoặc null)"
                  }
             6. LOẠI 6: TƯ VẤN & TRA CỨU (type: "response")
                - Dùng để trả lời câu hỏi thông thường, tư vấn bác sĩ, giá tiền.
@@ -1023,7 +960,7 @@ const chatWithAI = async (req, res) => {
             // Tạo Appointment
             const newAppt = new appointmentModel({
                 userId,
-                docId,
+                doctorId: docId,
                 slotDate: date,
                 slotTime: time,
                 userData: currentUser, // Lưu snapshot thông tin user tại thời điểm đặt
@@ -1063,15 +1000,15 @@ const chatWithAI = async (req, res) => {
             await appointmentModel.findByIdAndUpdate(appointmentId, { cancelled: true });
 
             // 2. GIẢI PHÓNG SLOT CHO BÁC SĨ (Quan trọng)
-            const { docId, slotDate, slotTime } = appointment;
-            const doctorData = await doctorModel.findById(docId);
+            const { doctorId, slotDate, slotTime } = appointment;
+            const doctorData = await doctorModel.findById(doctorId);
 
             let slots_booked = doctorData.slots_booked;
 
             if (slots_booked[slotDate]) {
                 // Lọc bỏ giờ đã hủy ra khỏi mảng
                 slots_booked[slotDate] = slots_booked[slotDate].filter(e => e !== slotTime);
-                await doctorModel.findByIdAndUpdate(docId, { slots_booked });
+                await doctorModel.findByIdAndUpdate(doctorId, { slots_booked });
             }
 
             return res.json({
@@ -1081,7 +1018,7 @@ const chatWithAI = async (req, res) => {
             });
         }
         if (aiResponse.type === "health_advice") {
-            const { prediction, home_care, specialty, suggested_docId } = aiResponse;
+            const { prediction, home_care, specialty, suggested_doctorId } = aiResponse;
 
             // Format câu trả lời đẹp mắt cho Chatbot
             let replyMessage = `🤖 **Dự đoán sơ bộ:** ${prediction}\n\n` +
@@ -1089,8 +1026,8 @@ const chatWithAI = async (req, res) => {
                 `🏥 **Chuyên khoa gợi ý:** ${specialty}`;
 
             // Nếu AI tìm được bác sĩ phù hợp trong danh sách, gợi ý luôn
-            if (suggested_docId) {
-                const suggestedDoc = doctors.find(d => String(d._id) === String(suggested_docId));
+            if (suggested_doctorId) {
+                const suggestedDoc = doctors.find(d => String(d._id) === String(suggested_doctorId));
                 if (suggestedDoc) {
                     replyMessage += `\n\n👨‍⚕️ **Bác sĩ phù hợp:** Dr. ${suggestedDoc.name} (${suggestedDoc.speciality})`;
                 }
@@ -1269,67 +1206,67 @@ const sendAppointmentEmail = async ({ email, name, docName, date, time, type, fe
     }
 };
 
-const sendCancellationEmail = async ({ email, name, docName, date, time, isRefund }) => {
+// const sendCancellationEmail = async ({ email, name, docName, date, time, isRefund }) => {
 
-    // Tạo nội dung HTML dựa trên trạng thái hoàn tiền
-    const refundMessage = isRefund
-        ? `<div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; padding: 12px; border-radius: 6px; margin-top: 10px;">
-             <strong>💰 TRẠNG THÁI HOÀN TIỀN:</strong> Đã ghi nhận.<br/>
-             <span style="font-size: 13px;">Hệ thống đang xử lý hoàn tiền về ví của bạn trong vòng 3-5 ngày làm việc.</span>
-           </div>`
-        : `<p style="color: #6b7280; font-style: italic; font-size: 13px;">(Lịch hẹn này chưa thanh toán nên không phát sinh hoàn tiền).</p>`;
+//     // Tạo nội dung HTML dựa trên trạng thái hoàn tiền
+//     const refundMessage = isRefund
+//         ? `<div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; padding: 12px; border-radius: 6px; margin-top: 10px;">
+//              <strong>💰 TRẠNG THÁI HOÀN TIỀN:</strong> Đã ghi nhận.<br/>
+//              <span style="font-size: 13px;">Hệ thống đang xử lý hoàn tiền về ví của bạn trong vòng 3-5 ngày làm việc.</span>
+//            </div>`
+//         : `<p style="color: #6b7280; font-style: italic; font-size: 13px;">(Lịch hẹn này chưa thanh toán nên không phát sinh hoàn tiền).</p>`;
 
-    const htmlContent = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
-        
-        <div style="background-color: #ef4444; padding: 20px; text-align: center;">
-            <h2 style="margin: 0; color: #ffffff;">XÁC NHẬN HỦY LỊCH HẸN</h2>
-        </div>
-        
-        <div style="padding: 24px; background-color: #ffffff;">
-            <p>Xin chào <strong>${name}</strong>,</p>
-            <p>Chúng tôi xác nhận yêu cầu hủy lịch khám của bạn đã được xử lý thành công.</p>
-            
-            <div style="background-color: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb; margin: 20px 0;">
-                <p style="margin: 5px 0;"><strong>👨‍⚕️ Bác sĩ:</strong> ${docName}</p>
-                <p style="margin: 5px 0;"><strong>📅 Ngày hẹn:</strong> ${date}</p>
-                <p style="margin: 5px 0;"><strong>⏰ Giờ hẹn:</strong> ${time}</p>
-                
-                ${refundMessage}
-            </div>
+//     const htmlContent = `
+//     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
 
-            <p style="color: #4b5563; font-size: 14px;">
-                Nếu bạn muốn đặt lại lịch khám mới, vui lòng truy cập website hoặc ứng dụng của chúng tôi.
-            </p>
-            
-            <div style="text-align: center; margin-top: 30px;">
-                <a href="http://localhost:5173/doctors" style="display: inline-block; background-color: #5f6FFF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">
-                    Đặt Lịch Mới
-                </a>
-            </div>
-        </div>
+//         <div style="background-color: #ef4444; padding: 20px; text-align: center;">
+//             <h2 style="margin: 0; color: #ffffff;">XÁC NHẬN HỦY LỊCH HẸN</h2>
+//         </div>
 
-        <div style="background-color: #f3f4f6; padding: 15px; text-align: center; font-size: 12px; color: #9ca3af;">
-            <p>&copy; 2025 Prescripto. All rights reserved.</p>
-        </div>
-    </div>
-    `;
+//         <div style="padding: 24px; background-color: #ffffff;">
+//             <p>Xin chào <strong>${name}</strong>,</p>
+//             <p>Chúng tôi xác nhận yêu cầu hủy lịch khám của bạn đã được xử lý thành công.</p>
 
-    // Cấu hình mail gửi đi
-    const mailOptions = {
-        from: `"Prescripto Support" <${process.env.SMTP_EMAIL}>`,
-        to: email,
-        subject: `🚫 Xác nhận hủy lịch khám: ${date} lúc ${time}`,
-        html: htmlContent
-    };
+//             <div style="background-color: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb; margin: 20px 0;">
+//                 <p style="margin: 5px 0;"><strong>👨‍⚕️ Bác sĩ:</strong> ${docName}</p>
+//                 <p style="margin: 5px 0;"><strong>📅 Ngày hẹn:</strong> ${date}</p>
+//                 <p style="margin: 5px 0;"><strong>⏰ Giờ hẹn:</strong> ${time}</p>
 
-    try {
-        await transporter.sendMail(mailOptions);
-        console.log(`✅ Email hủy lịch đã gửi đến: ${email} (Refund: ${isRefund})`);
-    } catch (error) {
-        console.error("❌ Lỗi gửi email hủy:", error);
-    }
-};
+//                 ${refundMessage}
+//             </div>
+
+//             <p style="color: #4b5563; font-size: 14px;">
+//                 Nếu bạn muốn đặt lại lịch khám mới, vui lòng truy cập website hoặc ứng dụng của chúng tôi.
+//             </p>
+
+//             <div style="text-align: center; margin-top: 30px;">
+//                 <a href="http://localhost:5173/doctors" style="display: inline-block; background-color: #5f6FFF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">
+//                     Đặt Lịch Mới
+//                 </a>
+//             </div>
+//         </div>
+
+//         <div style="background-color: #f3f4f6; padding: 15px; text-align: center; font-size: 12px; color: #9ca3af;">
+//             <p>&copy; 2025 Prescripto. All rights reserved.</p>
+//         </div>
+//     </div>
+//     `;
+
+//     // Cấu hình mail gửi đi
+//     const mailOptions = {
+//         from: `"Prescripto Support" <${process.env.SMTP_EMAIL}>`,
+//         to: email,
+//         subject: `🚫 Xác nhận hủy lịch khám: ${date} lúc ${time}`,
+//         html: htmlContent
+//     };
+
+//     try {
+//         await transporter.sendMail(mailOptions);
+//         console.log(`✅ Email hủy lịch đã gửi đến: ${email} (Refund: ${isRefund})`);
+//     } catch (error) {
+//         console.error("❌ Lỗi gửi email hủy:", error);
+//     }
+// };
 /// API add reviews 
 const addReview = async (req, res) => {
     try {
@@ -1346,7 +1283,13 @@ const addReview = async (req, res) => {
         if (!appointment) {
             return res.json({ success: false, message: "Cuộc hẹn không tìm thấy!" });
         }
-
+        const existingReview = await reviewModel.findOne({ appointmentId });
+        if (existingReview) {
+            return res.json({
+                success: false,
+                message: "Bạn đã đánh giá cuộc hẹn này rồi. Không thể đánh giá thêm."
+            });
+        }
         // 1.2 Kiểm tra cuộc hẹn có đúng là của User đang đăng nhập không (Chống đánh giá hộ)
         if (appointment.userId.toString() !== userId) {
             return res.json({ success: false, message: "Bạn không có quyền đánh giá cuộc hẹn này!" });
@@ -1366,29 +1309,24 @@ const addReview = async (req, res) => {
             return res.json({ success: false, message: "Bạn đã đánh giá cuộc hẹn này rồi!" });
         }
 
-        // --- BƯỚC 4: XÁC ĐỊNH BÁC SĨ (CHÍNH XÁC TUYỆT ĐỐI) ---
-        // Thay vì lấy docId từ req.body (User gửi lên có thể sai), 
-        // ta lấy docId TRỰC TIẾP từ appointment tìm được trong Database.
-        const docId = appointment.docId;
+        const doctorId = appointment.doctorId;
 
         // --- BƯỚC 5: THỰC HIỆN LƯU ---
-        const newReview = new reviewModel({
-            docId: docId, // Đảm bảo review gắn đúng vào bác sĩ của cuộc hẹn
-            userId: userId,
-            appointmentId: appointmentId,
-            rating: rating,
-            comment: comment
-        });
-
-        await newReview.save();
+        const reviewData = {
+            appointmentId,
+            doctorId: appointment.doctorId, // Lấy ID bác sĩ từ cuộc hẹn
+            userId,
+            rating: Number(rating),
+            comment
+        };
 
         // --- BƯỚC 6: TÍNH LẠI ĐIỂM CHO BÁC SĨ ---
-        const reviews = await reviewModel.find({ docId });
+        const reviews = await reviewModel.find({ doctorId });
         let totalStars = 0;
         reviews.map((item) => totalStars += item.rating);
         let avg = reviews.length > 0 ? totalStars / reviews.length : 0;
 
-        await doctorModel.findByIdAndUpdate(docId, {
+        await doctorModel.findByIdAndUpdate(doctorId, {
             averageRating: avg,
             totalRatings: reviews.length
         });
@@ -1406,59 +1344,71 @@ const addReview = async (req, res) => {
 
 const checkExpiredAppointments = async () => {
     try {
-        // 1. Lấy tất cả lịch chưa hoàn thành và chưa bị hủy
-        const appointments = await appointmentModel.find({
-            isCompleted: false,
+        // 1. Cấu hình thời gian (15 phút tính bằng mili-giây)
+        const FIFTEEN_MINUTES_IN_MS = 15 * 60 * 1000;
+        const timeThreshold = new Date(Date.now() - FIFTEEN_MINUTES_IN_MS);
+
+        // 2. Tìm các cuộc hẹn quá hạn
+        // Điều kiện: Trạng thái 'Pending', Chưa thanh toán, Tạo trước mốc thời gian giới hạn
+        const expiredAppointments = await appointmentModel.find({
+            payment: false,
+            createdAt: { $lt: timeThreshold },
             cancelled: false
         });
 
-        const now = new Date();
+        if (expiredAppointments.length > 0) {
+            console.log(`Tìm thấy ${expiredAppointments.length} cuộc hẹn quá hạn. Đang xử lý hủy...`);
 
-        // 2. Duyệt qua từng lịch hẹn
-        for (const appointment of appointments) { // <--- Đặt tên biến là 'appointment'
+            // 3. Trả lại slot cho bác sĩ (Xử lý song song)
+            // Vì slots_booked là Map/Object: { "dd_mm_yyyy": ["time1", "time2"] }
+            // Ta dùng $pull để rút "slotTime" ra khỏi mảng của ngày tương ứng.
+            const releaseSlotPromises = expiredAppointments.map((app) => {
+                // Tạo key truy cập vào đúng ngày trong Map (VD: slots_booked.25_12_2024)
+                // Lưu ý: Đảm bảo format slotDate khớp với key trong DB
+                const mapKey = `slots_booked.${app.slotDate}`;
 
-            // --- BẮT ĐẦU XỬ LÝ THỜI GIAN ---
-            // Format trong DB: slotDate="21_12_2025", slotTime="10:30 AM"
-            const dateParts = appointment.slotDate.split('_'); // [21, 12, 2025]
-            const day = parseInt(dateParts[0]);
-            const month = parseInt(dateParts[1]) - 1; // Tháng trong JS bắt đầu từ 0
-            const year = parseInt(dateParts[2]);
+                return doctorModel.updateOne(
+                    { _id: app.doctorId }, // Dùng doctorId (ObjectId) chuẩn
+                    {
+                        $pull: {
+                            [mapKey]: app.slotTime // Rút giờ hẹn ra khỏi mảng
+                        }
+                    }
+                );
+            });
 
-            // Tạo đối tượng Date cho ngày hẹn
-            const appointmentDate = new Date(year, month, day);
+            // Chờ tất cả lệnh trả slot hoàn tất
+            await Promise.all(releaseSlotPromises);
 
-            // Xử lý giờ (slotTime)
-            // Giả sử slotTime dạng "10:30 AM" hoặc "02:00 PM"
-            const timeParts = appointment.slotTime.split(' '); // ["10:30", "AM"]
-            const time = timeParts[0].split(':'); // ["10", "30"]
-            let hour = parseInt(time[0]);
-            const minute = parseInt(time[1]);
-            const ampm = timeParts[1];
+            // 4. Cập nhật trạng thái cuộc hẹn thành ĐÃ HỦY
+            const expiredIds = expiredAppointments.map(app => app._id);
+            await appointmentModel.updateMany(
+                { _id: { $in: expiredIds } },
+                {
+                    $set: {
+                        cancelled: true,
+                        isCompleted: false,
+                        cancelReason: "Hủy tự động: Quá hạn thanh toán (15 phút)."
+                    },
+                    $push: {
+                        statusHistory: {
+                            status: 'Cancelled',
+                            changedAt: new Date()
+                        }
+                    }
+                }
+            );
 
-            if (ampm === 'PM' && hour < 12) hour += 12;
-            if (ampm === 'AM' && hour === 12) hour = 0;
-
-            appointmentDate.setHours(hour, minute, 0);
-            // --- KẾT THÚC XỬ LÝ THỜI GIAN ---
-
-            // 3. So sánh với thời gian hiện tại
-            // LỖI CŨ CỦA BẠN NẰM Ở ĐÂY: Có thể bạn đã viết if (app.slotDate...)
-            if (appointmentDate < now) {
-                // Nếu thời gian hẹn nhỏ hơn thời gian hiện tại -> Đã qua
-
-                // Cập nhật trạng thái (Ví dụ: Đánh dấu là đã hoàn thành hoặc hết hạn)
-                // Ở đây tôi set isCompleted = true (hoặc bạn có thể thêm field isExpired)
-                await appointmentModel.findByIdAndUpdate(appointment._id, {
-                    isCompleted: true
-                });
-
-                console.log(`Đã cập nhật hoàn thành cho lịch hẹn ID: ${appointment._id}`);
-            }
+            console.log(`✅ Đã hủy thành công ${expiredIds.length} cuộc hẹn và hoàn trả slot.`);
+        } else {
+            // console.log("Không có cuộc hẹn nào cần hủy.");
         }
+
     } catch (error) {
-        console.error("Lỗi trong checkExpiredAppointments:", error);
+        console.error("❌ Lỗi trong cron job hủy đơn:", error);
     }
 };
+
 
 const getUserNotifications = async (req, res) => {
     try {

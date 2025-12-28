@@ -15,12 +15,14 @@ const DoctorContextProvider = (props) => {
     const [appointments, setAppointments] = useState([])
     const [dashData, setDashData] = useState(false)
     const [profileData, setProfileData] = useState(false)
+    const [medicines, setMedicines] = useState([])
 
     const getAppointments = async () => {
         try {
 
             const { data } = await axios.get(backendUrl + '/api/doctor/appointments', { headers: { dToken: dToken } })
             if (data.success) {
+                console.log(data.appointments)
                 setAppointments(data.appointments.reverse())
             } else {
                 toast.error(data.message)
@@ -68,9 +70,10 @@ const DoctorContextProvider = (props) => {
     const getDashData = async () => {
         try {
             const { data } = await axios.get(backendUrl + '/api/doctor/dashboard ', { headers: { dToken: dToken } })
+            console.log(data.dashData)
             if (data.success) {
                 setDashData(data.dashData)
-                console.log(data.dashData)
+
             } else {
                 toast.error(data.message)
             }
@@ -94,10 +97,42 @@ const DoctorContextProvider = (props) => {
             toast.error(error.message)
         }
     }
-    const loadPatientHistory = async (userId) => {
+    const getMedicines = async () => {
+        try {
+            const { data } = await axios.get(backendUrl + '/api/doctor/list-medicines', { headers: { dToken } })
+            if (data.success) {
+                setMedicines(data.medicines)
+            } else {
+                toast.error(data.message)
+            }
+        } catch (error) {
+            toast.error(error.message)
+        }
+    }
+    const savePrescriptionToDb = async ({ appointmentId, diagnosis, medicines, symptoms, note }) => {
+        try {
+            const { data } = await axios.post(backendUrl + '/api/doctor/save-prescription',
+                { appointmentId, diagnosis, medicines, symptoms, note }, // Gửi đầy đủ 5 trường
+                { headers: { dToken } }
+            )
+            if (data.success) {
+                toast.success(data.message)
+                getAppointments()
+                return true;
+            } else {
+                toast.error(data.message)
+                return false;
+            }
+        } catch (error) {
+            toast.error(error.message)
+            return false;
+        }
+    }
+
+    const loadPatientHistory = async (userId,docId) => {
         try {
             const { data } = await axios.get(backendUrl + '/api/doctor/patient-history', {
-                params: { userId },
+                params: { userId,docId },
                 headers: { dToken } // Dùng dToken của bác sĩ
             })
             if (data.success) {
@@ -120,7 +155,7 @@ const DoctorContextProvider = (props) => {
         completeAppointment, cancelAppointment,
         dashData, setDashData, getDashData,
         profileData, setProfileData, getProfileData,
-        loadPatientHistory,
+        medicines, getMedicines, savePrescriptionToDb, loadPatientHistory,
     }
     return (
         <DoctorContext.Provider value={value}>

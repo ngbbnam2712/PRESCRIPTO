@@ -4,9 +4,8 @@ import jwt from 'jsonwebtoken'
 import appointmentModel from '../models/appointmentModel.js'
 import doctorModel from '../models/doctorModel.js';
 import reviewModel from '../models/reviewModel.js';
-
-
-
+import prescriptionModel from "../models/prescriptionModel.js";
+import medicineModel from "../models/medicineModel.js";
 
 
 
@@ -138,20 +137,25 @@ const doctorDashboard = async (req, res) => {
         const appointments = await appointmentModel.find({ docId, payment: true })
 
         let earnings = 0
-        let patients = [];
-        appointments.map((item) => {
+        const uniquePatients = new Set();
+
+        appointments.forEach((item) => {
+
             if (item.isCompleted || item.payment) {
                 earnings += item.amount;
             }
-            if (!patients.includes(item.userId)) {
-                patients.push(item.userId);
+
+
+            if (item.userId) {
+
+                uniquePatients.add(item.userId.toString());
             }
         });
 
         const dashData = {
             earnings,
             appointments: appointments.length,
-            patients: patients.length,
+            patients: uniquePatients.size,
             latestAppointments: appointments.reverse().slice(0, 5)
         }
 
@@ -196,34 +200,169 @@ const updateDoctorProfile = async (req, res) => {
 ///API get doctor review 
 const getDoctorReviews = async (req, res) => {
     try {
-        const docId = req.params.docId
+        const { docId } = req.params;
         // Tìm trong bảng reviews, populate thêm thông tin User để lấy tên và ảnh
-        const reviews = await reviewModel.find({ docId })
-            .populate('userId', 'name image') // Chỉ lấy field name và image của user
-            .sort({ createdAt: -1 }); // Mới nhất lên đầu
+        const reviews = await reviewModel.find({ doctorId: docId })
+            .populate('userId', 'name image')
+            .sort({ createdAt: -1 }); // Sắp xếp mới nhất lên đầu
 
         res.json({ success: true, reviews });
+
     } catch (error) {
-        console.log(error);
+        console.log("Lỗi lấy reviews:", error);
         res.json({ success: false, message: error.message });
     }
 }
+
 const getPatientHistory = async (req, res) => {
     try {
-        const { userId } = req.query;
+        const { userId, docId } = req.query;
 
-        // Tìm tất cả cuộc hẹn ĐÃ HOÀN THÀNH của bệnh nhân này (với bất kỳ bác sĩ nào)
-        // Để bác sĩ tham khảo được tiểu sử bệnh lý toàn diện
-        const history = await appointmentModel.find({
-            userId: userId,
-            isCompleted: true
-        }).sort({ slotDate: -1 });
+        // 1. Lấy tất cả cuộc hẹn đã hoàn thành của bệnh nhân này
+        const appointments = await appointmentModel.find({
+            userId,
+            docId,
+            isCompleted: true,
+            cancelled: false
+        }).sort({ slotDate: -1 }); // Sắp xếp mới nhất lên đầu
 
-        res.json({ success: true, history });
+        // 2. Duyệt qua từng cuộc hẹn để tìm Đơn thuốc (Prescription) tương ứng
+        const historyData = await Promise.all(appointments.map(async (appt) => {
+
+            // Tìm đơn thuốc dựa vào appointmentId
+            const prescription = await prescriptionModel.findOne({ appointmentId: appt._id });
+
+            // 3. Trả về object đã gộp dữ liệu
+            return {
+                ...appt.toObject(), // Lấy toàn bộ thông tin lịch hẹn (ngày, giờ, symptoms...)
+
+                // Gán thêm thông tin từ Prescription vào (để Frontend dễ lấy)
+                diagnosis: prescription ? prescription.diagnosis : 'Chưa có chẩn đoán',
+                symptoms: prescription ? prescription.symptoms : 'Chưa có chẩn đoán',
+                note: prescription ? prescription.note : '',
+
+                // Gán toàn bộ object prescription vào biến prescriptionData để frontend map danh sách thuốc
+                prescriptionData: prescription || null
+            }
+        }));
+
+        res.json({ success: true, history: historyData });
+
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+}
+const addMedicine = async (req, res) => {
+    try {
+        const {
+            name,
+            price,
+            description,
+            stock,
+            unit,
+            specializationId,
+            isGeneral
+        } = req.body;
+
+        // Kiểm tra trùng tên thuốc
+        const exists = await medicineModel.findOne({ name });
+        if (exists) {
+            return res.json({ success: false, message: "Tên thuốc đã tồn tại trong kho" });
+        }
+
+        // Tạo thuốc mới với đầy đủ trường
+        const newMedicine = new medicineModel({
+            name,
+            price,
+            description,
+            stock: stock || 100, // Mặc định nếu không gửi
+            unit: unit || 'Viên',
+            specializationId: specializationId || null, // Có thể null nếu là thuốc chung
+            isGeneral: isGeneral || false
+        });
+
+        await newMedicine.save();
+        res.json({ success: true, message: "Đã thêm thuốc vào kho thành công" });
+
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+}
+const listMedicines = async (req, res) => {
+    try {
+        // Lấy tất cả thuốc, sắp xếp thuốc mới nhất lên đầu
+        const medicines = await medicineModel.find({}).sort({ createdAt: -1 });
+        res.json({ success: true, medicines });
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+}
+const savePrescription = async (req, res) => {
+    try {
+        const { appointmentId, diagnosis, medicines, symptoms, note } = req.body;
+
+        // 1. Kiểm tra cuộc hẹn
+        const appointment = await appointmentModel.findById(appointmentId);
+        if (!appointment) {
+            return res.json({ success: false, message: "Không tìm thấy cuộc hẹn" });
+        }
+
+        const prescriptionMedicines = [];
+
+        // 2. Xử lý danh sách thuốc (Trừ kho & Lấy thông tin)
+        for (const item of medicines) {
+            // Lấy thuốc từ DB kho để check tồn kho và lấy ID
+            const drugInDb = await medicineModel.findOne({ name: item.name });
+
+            const quantity = Number(item.quantity);
+
+            // Chuẩn bị object để lưu vào PrescriptionModel
+            prescriptionMedicines.push({
+                medicineId: drugInDb ? drugInDb._id : null,
+                name: item.name,
+                quantity: quantity,
+                unit: item.unit || (drugInDb ? drugInDb.unit : 'Viên'),
+                dosage: item.dosage // <--- QUAN TRỌNG: Phải lưu liều dùng bác sĩ kê
+            });
+
+            // Trừ tồn kho (Inventory Management)
+            if (drugInDb) {
+                // Kiểm tra nếu đủ thuốc mới trừ, hoặc cho phép âm tùy logic của bạn
+                if (drugInDb.stock >= quantity) {
+                    drugInDb.stock -= quantity;
+                    await drugInDb.save();
+                }
+            }
+        }
+
+        // 3. TẠO MỚI PRESCRIPTION
+        const newPrescription = new prescriptionModel({
+            appointmentId: appointmentId,
+            doctorId: appointment.doctorId,
+            patientId: appointment.userId,
+            diagnosis: diagnosis,
+            symptoms: symptoms,
+            note: note || '',
+            medicines: prescriptionMedicines
+        });
+
+        await newPrescription.save();
+
+        // 4. CẬP NHẬT APPOINTMENT
+        await appointmentModel.findByIdAndUpdate(appointmentId, {
+            hasPrescription: true,  // Đánh dấu đã có đơn
+            isCompleted: true,      // <--- QUAN TRỌNG: Đánh dấu cuộc hẹn đã hoàn thành
+        });
+
+        res.json({ success: true, message: "Đã lưu đơn thuốc và hoàn thành cuộc hẹn" });
+
     } catch (error) {
         console.log(error);
         res.json({ success: false, message: error.message });
     }
 }
 
-export { changeAvailablity, doctorList, loginDoctor, appointmentsDoctor, appointmentComplete, appointmentCancel, doctorDashboard, doctorProfile, updateDoctorProfile, getDoctorReviews, getPatientHistory }
+export { changeAvailablity, doctorList, loginDoctor, appointmentsDoctor, appointmentComplete, appointmentCancel, doctorDashboard, doctorProfile, updateDoctorProfile, getDoctorReviews, getPatientHistory, addMedicine, listMedicines, savePrescription }

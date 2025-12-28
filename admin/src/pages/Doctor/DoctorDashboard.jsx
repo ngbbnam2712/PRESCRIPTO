@@ -22,7 +22,7 @@ const DoctorDashboard = () => {
                 <div className='flex items-center gap-2 bg-white p-4 min-w-52 rounded border-2 border-gray-100 cursor-pointer hover:scale-105 transition-all'>
                     <img className='w-14' src={assets.earning_icon} alt="" />
                     <div>
-                        <p className='text-xl font-semibold text-gray-600'>{currency} {dashData.earnings}</p>
+                        <p className='text-xl font-semibold text-gray-600'> {dashData.earnings} {currency}</p>
                         <p className='text-gray-400'>Earnings</p>
                     </div>
                 </div>
@@ -65,8 +65,8 @@ const DoctorDashboard = () => {
 
                                     {/* Mới thêm: Badge Mode */}
                                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${item.appointmentType === 'Remote'
-                                            ? 'bg-indigo-50 text-indigo-600 border-indigo-200'
-                                            : 'bg-green-50 text-green-600 border-green-200'
+                                        ? 'bg-indigo-50 text-indigo-600 border-indigo-200'
+                                        : 'bg-green-50 text-green-600 border-green-200'
                                         }`}>
                                         {item.appointmentType === 'Remote' ? 'Remote' : 'Clinic'}
                                     </span>
