@@ -805,54 +805,52 @@ const chatWithAI = async (req, res) => {
     try {
         const { question, history } = req.body;
         const { token } = req.headers;
-        // BƯỚC 2: Gửi kèm userId vào body
+
+        // --- BƯỚC 1: VALIDATE ĐẦU VÀO ---
         if (!question) {
             return res.json({ success: false, message: "Vui lòng nhập câu hỏi." });
         }
-        let userId = null;
 
+        // --- BƯỚC 2: XÁC THỰC USER (Chỉ phục vụ Member) ---
+        let userId = null;
         if (token) {
             try {
-                // Giải mã token bằng Secret Key
                 const token_decode = jwt.verify(token, process.env.JWT_SECRET);
-                userId = token_decode.id; // <--- ĐÃ LẤY ĐƯỢC USER ID Ở ĐÂY
+                userId = token_decode.id;
             } catch (err) {
-                // Nếu token lỗi hoặc hết hạn, coi như là khách vãng lai (không làm gì cả)
-                console.log("Guest User");
+                console.log("Token invalid or expired");
             }
         }
-        // --- BƯỚC 1: XÁC ĐỊNH TRẠNG THÁI NGƯỜI DÙNG (GUEST vs MEMBER) ---
+
         const isGuest = !userId;
         let userAppointments = [];
         let currentUser = null;
 
-        // Chỉ lấy dữ liệu cá nhân nếu đã đăng nhập
+        // Chỉ lấy dữ liệu cá nhân nếu là Member
         if (!isGuest) {
             currentUser = await userModel.findById(userId).select('-password');
             if (currentUser) {
                 userAppointments = await appointmentModel.find({ userId: userId })
-                    .select('_id doctorId slotDate slotTime isCompleted cancelled docData amount');
+                    .select('_id docId slotDate slotTime isCompleted cancelled docData amount');
             }
         }
 
-        // --- BƯỚC 2: LẤY DỮ LIỆU CHUNG (BÁC SĨ) ---
-
+        // --- BƯỚC 3: LẤY DỮ LIỆU BÁC SĨ & CẤU HÌNH CONTEXT ---
+        // Lấy thêm availableTime và specializationId
         const doctors = await doctorModel.find({ available: true })
-            .select('_id name speciality fees experience slots_booked');
+            .select('_id name speciality specializationId fees experience slots_booked availableTime');
+
         const doctorContextData = doctors.map(doc =>
             `- Bác sĩ: ${doc.name} (ID: ${doc._id})
-     - Chuyên khoa: ${doc.speciality}
-     - Kinh nghiệm: ${doc.experience} năm
-     - Phí khám: $${doc.fees}
-     - Lịch rảnh (Giả định): 09:00, 10:30, 14:00, 16:00 (Hôm nay)`
+             - Chuyên khoa: ${doc.speciality}
+             - Kinh nghiệm: ${doc.experience} năm
+             - Phí khám: $${doc.fees}
+             - Giờ làm việc: ${doc.availableTime || "08:00 - 17:00"} (QUAN TRỌNG: Chỉ nhận đặt lịch trong khung giờ này)`
         ).join("\n");
 
-        // 3. Ghép vào System Instruction
-        const systemPrompt = `
-        Bạn là Trợ lý ảo Y tế của phòng khám Prescripto.
-        Dưới đây là DANH SÁCH BÁC SĨ THỰC TẾ của phòng khám (Hãy chỉ tư vấn dựa trên danh sách này):${doctorContextData}`;
-        // --- BƯỚC 3: CẤU HÌNH AI & PROMPT ---
+        // --- BƯỚC 4: CẤU HÌNH AI & PROMPT ---
         const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+
         const model = genAI.getGenerativeModel({
             model: "gemini-2.5-flash",
             generationConfig: { responseMimeType: "application/json" }
@@ -860,49 +858,56 @@ const chatWithAI = async (req, res) => {
 
         const now = new Date();
         const currentDateTime = now.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+
         const userContext = isGuest
-            ? "KHÁCH VÃNG LAI (Chưa có hồ sơ). Cần thu thập đủ thông tin."
-            : `MEMBER (Đã có hồ sơ): ${currentUser.name}, ${currentUser.phone} `;
+            ? "KHÁCH VÃNG LAI (Chưa đăng nhập)."
+            : `MEMBER (Đã đăng nhập): ${currentUser.name}, ${currentUser.phone} `;
 
         const prompt = `
             Bạn là Trợ lý Lễ tân AI của Phòng khám Prescripto.
             
             --- NGỮ CẢNH ---
             - Người dùng: ${userContext}
-            - Thời gian: ${currentDateTime}
-            - Danh sách Bác sĩ: ${JSON.stringify(doctors)}
-            - Lịch sử hẹn (Member): ${JSON.stringify(userAppointments)}
+            - Thời gian hiện tại: ${currentDateTime}
+            - Danh sách Bác sĩ & Giờ làm việc: 
+            ${doctorContextData}
+            - Lịch sử hẹn của khách: ${JSON.stringify(userAppointments)}
             
             --- LỊCH SỬ TRÒ CHUYỆN ---
-            Dưới đây là nội dung cuộc hội thoại vừa diễn ra, hãy ghi nhớ thông tin khách hàng:
             ${history || "Chưa có lịch sử trò chuyện."}
             Khách vừa nói: "${question}"
     
             --- NHIỆM VỤ ---
-            Phân tích và trả về JSON theo 1 trong 6 loại (type) sau:
+            Phân tích và trả về JSON theo 1 trong 5 loại (type) sau. LƯU Ý: KHÔNG hỗ trợ đặt lịch cho khách vãng lai (Guest).
     
             1. LOẠI 1: CẬP NHẬT THÔNG TIN (type: "update_profile") -> Chỉ cho Member.
+            
             2. LOẠI 2: ĐẶT LỊCH CHO MEMBER (type: "book_appointment") -> Chỉ cho Member.
+               - YÊU CẦU 1 (KHUNG GIỜ): Nếu khách nói giờ đơn lẻ (ví dụ "8h", "8:00"), bạn PHẢI tự động chuyển thành khung 30 phút: "08:00 - 08:30".
+               - YÊU CẦU 2 (CHECK GIỜ LÀM VIỆC): So sánh giờ khách chọn với "Giờ làm việc" của bác sĩ. Nếu nằm ngoài khung giờ -> Từ chối và dùng loại "response".
+               - OUTPUT BẮT BUỘC: 
+                 { 
+                   "type": "book_appointment", 
+                   "data": { 
+                      "docId": "ID_BAC_SI", 
+                      "date": "DD_MM_YYYY", 
+                      "time": "HH:MM" 
+                   } 
+                 }
+                 (Lưu ý: date phải chuẩn định dạng ngày tháng năm DD_MM_YYYY).
+
             3. LOẠI 3: HỦY LỊCH HẸN (type: "cancel_appointment") -> Chỉ cho Member.
             
-            4. LOẠI 4: CHUẨN BỊ ĐẶT LỊCH CHO GUEST (type: "guest_booking_ready")
-               - KHI NÀO: Khách chốt đặt lịch hoặc thể hiện ý định rõ ràng muốn đặt.
-               - HÀNH ĐỘNG: Ngừng hỏi thông tin
-            5. LOẠI 5:"health_advice": TƯ VẤN SỨC KHỎE / TRIỆU CHỨNG
-               - KHI NÀO: Khách mô tả triệu chứng (đau, sốt, mệt, cần lời khuyên y tế...).
-               - OUTPUT BẮT BUỘC: 
-                 {
-                    "type": "health_advice",
-                    "prediction": "Dự đoán bệnh sơ bộ (ngắn gọn)",
-                    "home_care": "Lời khuyên chăm sóc tại nhà (gạch đầu dòng)",
-                    "specialty": "Tên chuyên khoa nên khám (Ví dụ: General physician, Neurologist...)",
-                    "suggested_doctorId": "ID của bác sĩ phù hợp nhất trong danh sách (nếu có, hoặc null)"
-                 }
-            6. LOẠI 6: TƯ VẤN & TRA CỨU (type: "response")
-               - Dùng để trả lời câu hỏi thông thường, tư vấn bác sĩ, giá tiền.
+            4. LOẠI 4: TƯ VẤN SỨC KHỎE (type: "health_advice")
+               - Output: { "type": "health_advice", "prediction": "...", "home_care": "...", "specialty": "...", "suggested_doctorId": "..." }
+
+            5. LOẠI 5: TƯ VẤN & TRA CỨU (type: "response")
+               - Dùng trả lời câu hỏi thông thường.
+               - Nếu Guest muốn đặt lịch, hãy trả lời hướng dẫn họ đăng nhập hoặc đăng ký.
                - Output: { "type": "response", "message": "Nội dung trả lời..." }
             `;
-        // --- BƯỚC 4: GỬI VÀ XỬ LÝ KẾT QUẢ ---
+
+        // --- BƯỚC 5: GỬI VÀ XỬ LÝ KẾT QUẢ ---
         const result = await model.generateContent(prompt);
         const responseText = result.response.text();
 
@@ -913,20 +918,11 @@ const chatWithAI = async (req, res) => {
             return res.json({ success: true, reply: responseText });
         }
 
-        // Xử lý các trường hợp logic
-        if (aiResponse.type === "guest_booking_ready") {
-            return res.json({
-                success: true,
-                reply: "Bạn hãy điền thông tin vào form để hoàn tất đặt lịch nhé",
-                action: "OPEN_GUEST_PAYMENT_MODAL",
+        // ================= XỬ LÝ LOGIC TỪNG CASE =================
 
-            });
-        }
-        // CASE 1: Cập nhật thông tin User
+        // CASE 1: UPDATE PROFILE
         if (aiResponse.type === "update_profile") {
             const updateData = aiResponse.updates;
-
-            // Xử lý logic Address (giữ nguyên cái cũ nếu AI không gửi đủ line)
             if (updateData.address) {
                 const currentAddress = currentUser.address || {};
                 updateData.address = {
@@ -934,126 +930,137 @@ const chatWithAI = async (req, res) => {
                     line2: updateData.address.line2 || currentAddress.line2 || ""
                 };
             }
-
             await userModel.findByIdAndUpdate(userId, updateData);
             return res.json({
                 success: true,
                 reply: aiResponse.message || "Đã cập nhật thông tin thành công!"
             });
         }
+
+        // CASE 2: BOOK APPOINTMENT (QUAN TRỌNG: ĐÃ SỬA LỖI VALIDATION)
         if (aiResponse.type === "book_appointment") {
-            const { docId, date, time } = aiResponse.data;
-            const docInfo = await doctorModel.findById(docId);
-
-            if (!docInfo) return res.json({ success: true, reply: "Không tìm thấy bác sĩ này." });
-
-            // Check lại slot lần cuối (Database check)
-            let slots_booked = docInfo.slots_booked || {};
-            if (slots_booked[date] && slots_booked[date].includes(time)) {
-                return res.json({ success: true, reply: "Rất tiếc, khung giờ này vừa bị đặt mất rồi." });
+            if (isGuest) {
+                return res.json({ success: true, reply: "Bạn cần đăng nhập để đặt lịch nhé." });
             }
 
-            // Update slot
-            if (slots_booked[date]) slots_booked[date].push(time);
-            else slots_booked[date] = [time];
-            await doctorModel.findByIdAndUpdate(docId, { slots_booked });
+            if (!aiResponse.data) {
+                return res.json({ success: true, reply: "Vui lòng cung cấp rõ ngày giờ muốn đặt." });
+            }
 
-            // Tạo Appointment
-            const newAppt = new appointmentModel({
+            const { docId, date, time } = aiResponse.data;
+
+            // 1. Lấy dữ liệu bác sĩ (Giống hàm bookAppointment)
+            const docData = await doctorModel.findById(docId).select('-password');
+            if (!docData) {
+                return res.json({ success: false, reply: "Bác sĩ không khả dụng." });
+            }
+
+            // 2. Kiểm tra slot trùng (Logic từ hàm bookAppointment)
+            let slots_booked = docData.slots_booked || {};
+            if (slots_booked[date]) {
+                if (slots_booked[date].includes(time)) {
+                    return res.json({ success: false, reply: `Rất tiếc, khung giờ ${time} ngày ${date} đã kín.` });
+                }
+            }
+
+            // 3. Chuẩn bị dữ liệu Appointment (Copy từ logic bookAppointment của bạn)
+            const userData = await userModel.findById(userId).select('-password');
+
+            // Tạo bản sao snapshot bác sĩ
+            const docDataSnapshot = docData.toObject();
+            delete docDataSnapshot.slots_booked;
+
+            const appointmentData = {
                 userId,
                 doctorId: docId,
-                slotDate: date,
-                slotTime: time,
-                userData: currentUser, // Lưu snapshot thông tin user tại thời điểm đặt
-                docData: docInfo,
-                amount: docInfo.fees,
-                date: Date.now()
-            });
+                specializationId: docData.specializationId || docData.speciality,
+                userData,
+                docData: docDataSnapshot,
+                amount: docData.fees,
+                slotTime: time,  // Biến 'time' từ AI
+                slotDate: date,  // Biến 'date' từ AI
+                date: Date.now(),
+                appointmentType: "AI_Chatbot", // Đánh dấu để dễ phân biệt với 'Online' thủ công
+                cancelled: false,
+                payment: false,
+                isCompleted: false
+            };
 
-            await newAppt.save();
+            // 4. Lưu lịch hẹn
+            const newAppointment = new appointmentModel(appointmentData);
+            await newAppointment.save();
+
+            // 5. CẬP NHẬT SLOT BÁC SĨ (Dùng $push để đảm bảo mất slot)
+            // Đây là lệnh quan trọng nhất để đồng bộ với hàm thủ công
+            await doctorModel.findByIdAndUpdate(docId, {
+                $push: { [`slots_booked.${date}`]: time }
+            });
 
             return res.json({
                 success: true,
-                reply: `Đã đặt lịch thành công với BS ${docInfo.name}. Tôi sẽ chuyển bạn đến trang thanh toán ngay.`,
-                action: "REDIRECT_TO_MY_APPOINTMENTS" // Signal cho Frontend
+                reply: `Xác nhận đặt lịch thành công với BS ${docData.name} vào lúc ${time}, ngày ${date}.`,
+                action: "REDIRECT_TO_MY_APPOINTMENTS"
             });
         }
 
-        // CASE 3: Hủy lịch hẹn
+        // CASE 3: CANCEL APPOINTMENT
         if (aiResponse.type === "cancel_appointment") {
             const { appointmentId } = aiResponse;
-
-            // Tìm lịch hẹn
             const appointment = await appointmentModel.findById(appointmentId);
 
-            // Validate
-            if (!appointment) {
-                return res.json({ success: true, reply: "Không tìm thấy lịch hẹn này trong hệ thống." });
-            }
-            if (appointment.userId !== userId) {
-                return res.json({ success: true, reply: "Bạn không có quyền hủy lịch hẹn này." });
-            }
-            if (appointment.cancelled) {
-                return res.json({ success: true, reply: "Lịch hẹn này đã bị hủy trước đó rồi." });
-            }
+            if (!appointment) return res.json({ success: true, reply: "Không tìm thấy lịch hẹn." });
+            if (appointment.userId !== userId) return res.json({ success: true, reply: "Bạn không có quyền hủy lịch này." });
+            if (appointment.cancelled) return res.json({ success: true, reply: "Lịch hẹn này đã hủy rồi." });
 
-            // 1. Cập nhật trạng thái lịch hẹn thành Cancelled
             await appointmentModel.findByIdAndUpdate(appointmentId, { cancelled: true });
 
-            // 2. GIẢI PHÓNG SLOT CHO BÁC SĨ (Quan trọng)
-            const { doctorId, slotDate, slotTime } = appointment;
-            const doctorData = await doctorModel.findById(doctorId);
-
+            // Giải phóng slot cho bác sĩ
+            const { docId, slotDate, slotTime } = appointment;
+            const doctorData = await doctorModel.findById(docId);
             let slots_booked = doctorData.slots_booked;
 
             if (slots_booked[slotDate]) {
-                // Lọc bỏ giờ đã hủy ra khỏi mảng
                 slots_booked[slotDate] = slots_booked[slotDate].filter(e => e !== slotTime);
-                await doctorModel.findByIdAndUpdate(doctorId, { slots_booked });
+                await doctorModel.findByIdAndUpdate(docId, { slots_booked });
             }
 
             return res.json({
                 success: true,
                 reply: aiResponse.message || "Đã hủy lịch hẹn thành công.",
-                action: "CANCEL_APPOINTMENT" // Signal cho Frontend
+                action: "CANCEL_APPOINTMENT"
             });
         }
+
+        // CASE 4: HEALTH ADVICE
         if (aiResponse.type === "health_advice") {
             const { prediction, home_care, specialty, suggested_doctorId } = aiResponse;
-
-            // Format câu trả lời đẹp mắt cho Chatbot
             let replyMessage = `🤖 **Dự đoán sơ bộ:** ${prediction}\n\n` +
                 `💊 **Lời khuyên tại nhà:**\n${home_care}\n\n` +
                 `🏥 **Chuyên khoa gợi ý:** ${specialty}`;
 
-            // Nếu AI tìm được bác sĩ phù hợp trong danh sách, gợi ý luôn
             if (suggested_doctorId) {
                 const suggestedDoc = doctors.find(d => String(d._id) === String(suggested_doctorId));
                 if (suggestedDoc) {
                     replyMessage += `\n\n👨‍⚕️ **Bác sĩ phù hợp:** Dr. ${suggestedDoc.name} (${suggestedDoc.speciality})`;
                 }
             }
-
-            replyMessage += `\n\n_(Lưu ý: Đây chỉ là tham khảo từ AI, vui lòng đặt lịch khám để có chẩn đoán chính xác)_`;
+            replyMessage += `\n\n_(Lưu ý: Đây chỉ là tham khảo từ AI)_`;
 
             return res.json({
                 success: true,
                 reply: replyMessage,
-                action: "SHOW_DOCTORS" // Frontend có thể bắt action này để cuộn xuống list bác sĩ
+                action: "SHOW_DOCTORS"
             });
         }
 
+        // DEFAULT: RESPONSE
         return res.json({ success: true, reply: aiResponse.message });
 
     } catch (error) {
         console.log(error);
         res.json({ success: false, message: error.message });
     }
-
 }
-
-
-
 
 
 

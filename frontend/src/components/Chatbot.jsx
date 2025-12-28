@@ -73,18 +73,6 @@ const ChatBot = () => {
             if (data.success) {
                 setMessages(prev => [...prev, { text: data.reply, isUser: false }]);
 
-                // ACTION: Mở form đặt lịch
-                if (data.action === "OPEN_GUEST_PAYMENT_MODAL") {
-
-                    // 1. Lưu dữ liệu AI trích xuất được
-                    setBookingInitialData(data.bookingData);
-                    console.log(data.bookingdata)
-                    // 2. Mở Modal chứa QuickBookingForm
-                    setTimeout(() => {
-                        setIsBookingModalOpen(true);
-                    }, 1000);
-                }
-
                 // ACTION: Redirect (Dành cho user đã đăng nhập)
                 if (data.action === "REDIRECT_TO_MY_APPOINTMENTS") {
                     setTimeout(() => {
