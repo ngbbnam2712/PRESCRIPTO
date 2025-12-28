@@ -17,8 +17,10 @@ const Appointment = () => {
   const [slotIndex, setSlotIndex] = useState(0)
   const [slotTime, setSlotTime] = useState("")
   const [reviews, setReviews] = useState([])
-  const [avgRating, setAvgRating] = useState(0)
   const [bookingMode, setBookingMode] = useState('Clinic');
+
+  // Map cho khớp với dữ liệu trong DB (availableTime.day)
+  const dbDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   const StarRating = ({ rating }) => {
     const numRating = Number(rating) || 0;
@@ -30,94 +32,102 @@ const Appointment = () => {
       </div>
     );
   };
+
   const fetchDocInfo = async () => {
-    // Nếu context chưa có data, gọi API lấy lại
     if (doctors.length === 0) {
       await getDoctorsData();
     }
-
     const docInfoFound = doctors.find(doc => doc._id === docId);
     if (docInfoFound) {
       setDocInfo(docInfoFound);
-      // rating và totalRatings đã có sẵn trong docInfoFound từ database
     }
   }
+
   const fetchDocReviews = async () => {
     if (!docId) return;
     try {
       const { data } = await axios.get(backendUrl + `/api/doctor/reviews/${docId}`)
       if (data.success) {
-        setReviews(data.reviews) // Chỉ set data để hiển thị list, không tính toán lại
+        setReviews(data.reviews)
       }
     } catch (error) {
       console.error("Lỗi lấy review:", error)
     }
   }
+
   const getAvailableSlots = async () => {
-    if (!docInfo) return;
+    if (!docInfo || !docInfo.availableTime) return;
 
     let allSlots = []
     let today = new Date()
 
-    // THAY ĐỔI 1: Kéo dài lịch lên 14 ngày
     for (let i = 0; i < 14; i++) {
       let currentDate = new Date(today)
       currentDate.setDate(today.getDate() + i)
 
-      let endTime = new Date(today)
-      endTime.setDate(today.getDate() + i)
-      endTime.setHours(21, 0, 0, 0)
+      let dayName = dbDays[currentDate.getDay()];
+      let daySchedule = docInfo.availableTime.find(item => item.day === dayName);
+      let daySlots = [];
 
-      if (i === 0) {
-        let curHour = currentDate.getHours()
-        if (curHour >= 10) {
-          currentDate.setHours(curHour + 1)
-          currentDate.setMinutes(currentDate.getMinutes() > 30 ? 30 : 0)
-        } else {
-          currentDate.setHours(10)
-          currentDate.setMinutes(0)
-        }
-      } else {
-        currentDate.setHours(10)
-        currentDate.setMinutes(0)
+      if (daySchedule && daySchedule.sessions) {
+        daySchedule.sessions.forEach(session => {
+          let [startHour, startMin] = session.start.split(':').map(Number);
+          let [endHour, endMin] = session.end.split(':').map(Number);
+          let duration = session.duration || 30;
+
+          let currentSlotDate = new Date(currentDate);
+          currentSlotDate.setHours(startHour, startMin, 0, 0);
+
+          let endSessionDate = new Date(currentDate);
+          endSessionDate.setHours(endHour, endMin, 0, 0);
+
+          if (i === 0) {
+            let now = new Date();
+            if (currentSlotDate < now) {
+              currentSlotDate = new Date(now);
+              let minutes = currentSlotDate.getMinutes();
+              if (minutes > 30) {
+                currentSlotDate.setHours(currentSlotDate.getHours() + 1);
+                currentSlotDate.setMinutes(0);
+              } else {
+                currentSlotDate.setMinutes(30);
+              }
+              currentSlotDate.setSeconds(0);
+            }
+          }
+
+          while (currentSlotDate < endSessionDate) {
+            let timeStart = new Date(currentSlotDate);
+            let timeEnd = new Date(currentSlotDate);
+            timeEnd.setMinutes(timeEnd.getMinutes() + duration);
+
+            let formattedStart = `${timeStart.getHours().toString().padStart(2, '0')}:${timeStart.getMinutes().toString().padStart(2, '0')}`;
+            let formattedEnd = `${timeEnd.getHours().toString().padStart(2, '0')}:${timeEnd.getMinutes().toString().padStart(2, '0')}`;
+            let slotRange = `${formattedStart} - ${formattedEnd}`;
+
+            const slotDateStr = `${currentDate.getDate()}_${currentDate.getMonth() + 1}_${currentDate.getFullYear()}`;
+            const bookedSlots = docInfo.slots_booked || {};
+            const isSlotAvailable = bookedSlots[slotDateStr] && bookedSlots[slotDateStr].includes(formattedStart) ? false : true; // Lưu ý: Check booked theo giờ bắt đầu
+
+            if (isSlotAvailable) {
+              daySlots.push({
+                datetime: timeStart,
+                time: slotRange,
+                startTime: formattedStart // [Thêm] Lưu giờ bắt đầu để tiện sử dụng nếu cần
+              });
+            }
+
+            currentSlotDate.setMinutes(currentSlotDate.getMinutes() + duration);
+          }
+        });
+        daySlots.sort((a, b) => a.datetime - b.datetime);
       }
-
-      currentDate.setSeconds(0)
-      currentDate.setMilliseconds(0)
-
-      let timeSlots = []
-      while (currentDate < endTime) {
-        // THAY ĐỔI 2: Định dạng slotTime thành "HH:mm - HH:mm"
-        let startHours = currentDate.getHours()
-        let startMinutes = currentDate.getMinutes()
-
-        // Tạo thời gian kết thúc (sau 30 phút)
-        let endSlotTime = new Date(currentDate)
-        endSlotTime.setMinutes(endSlotTime.getMinutes() + 30)
-        let endHours = endSlotTime.getHours()
-        let endMinutes = endSlotTime.getMinutes()
-
-        let formattedStart = `${startHours.toString().padStart(2, '0')}:${startMinutes.toString().padStart(2, '0')}`
-        let formattedEnd = `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`
-        let slotRange = `${formattedStart} - ${formattedEnd}`
-
-        const slotDate = `${currentDate.getDate()}_${currentDate.getMonth() + 1}_${currentDate.getFullYear()}`
-        const bookedSlots = docInfo.slots_booked || {}
-        const isSlotAvailable = bookedSlots[slotDate] && bookedSlots[slotDate].includes(slotRange) ? false : true
-
-        if (isSlotAvailable) {
-          timeSlots.push({
-            datetime: new Date(currentDate),
-            time: slotRange
-          })
-        }
-        currentDate.setMinutes(currentDate.getMinutes() + 30)
-      }
-      allSlots.push(timeSlots)
+      allSlots.push(daySlots);
     }
     setDocSlots(allSlots)
   }
 
+  // --- HÀM BOOK APPOINTMENT ĐÃ SỬA ---
   const bookAppointments = async () => {
     if (!token) {
       toast.error("You need to be logged in to book an appointment")
@@ -126,11 +136,23 @@ const Appointment = () => {
     if (!slotTime) return toast.warning("Please select a time slot");
 
     try {
-      const date = docSlots[slotIndex][0].datetime
+      // 1. [SỬA] Tính ngày dựa trên index thay vì lấy từ mảng slot (tránh lỗi nếu ngày đó không có slot)
+      const date = new Date()
+      date.setDate(date.getDate() + slotIndex)
+
       const slotDate = `${date.getDate()}_${date.getMonth() + 1}_${date.getFullYear()}`
 
+      // 2. [SỬA] Tách giờ bắt đầu từ chuỗi range "HH:mm - HH:mm"
+      // slotTime hiện tại là: "08:00 - 08:30" => Lấy "08:00"
+      const finalTime = slotTime.split(' - ')[0];
+
       const { data } = await axios.post(backendUrl + '/api/user/book-appointment',
-        { docId, slotDate, slotTime, appointmentType: bookingMode },
+        {
+          docId,
+          slotDate,
+          slotTime: finalTime, // Gửi giờ sạch (08:00)
+          appointmentType: bookingMode
+        },
         { headers: { token } }
       )
 
@@ -142,6 +164,7 @@ const Appointment = () => {
         toast.error(data.message)
       }
     } catch (error) {
+      console.error(error)
       toast.error(error.message)
     }
   }
@@ -197,19 +220,21 @@ const Appointment = () => {
 
         <div className='flex gap-3 items-center w-full overflow-x-scroll mt-4 pb-2'>
           {docSlots.length > 0 && docSlots.map((item, index) => {
-            // THAY ĐỔI 3: Vô hiệu hóa ngày không còn slot
-            const isFull = item.length === 0;
-            const dateObj = isFull ? new Date(new Date().setDate(new Date().getDate() + index)) : item[0].datetime;
+            const currentDate = new Date();
+            currentDate.setDate(currentDate.getDate() + index);
+
+            // Dù ngày đó không có slot (item rỗng), ta vẫn cho phép click để xem (hoặc disable tùy ý)
+            // Logic ở đây là disable ngày quá khứ hoặc ngày không có lịch nếu cần
+            const hasSlots = item && item.length > 0;
 
             return (
               <div
-                onClick={() => !isFull && setSlotIndex(index)}
-                className={`text-center py-6 min-w-16 rounded-full cursor-pointer transition-all ${isFull ? 'bg-gray-100 border-dashed border-gray-300 opacity-50 cursor-not-allowed' : slotIndex === index ? 'bg-primary text-white scale-105' : 'border border-gray-200 hover:border-primary'}`}
+                onClick={() => setSlotIndex(index)} // Luôn cho phép click để đổi ngày xem
+                className={`text-center py-6 min-w-16 rounded-full cursor-pointer transition-all ${slotIndex === index ? 'bg-primary text-white scale-105' : 'border border-gray-200 hover:border-primary'}`}
                 key={index}
               >
-                <p className='text-xs'>{daysOfWeek[dateObj.getDay()]}</p>
-                <p>{dateObj.getDate()}</p>
-                {isFull && <p className='text-[10px] text-red-500 font-bold'>FULL</p>}
+                <p className='text-xs'>{daysOfWeek[currentDate.getDay()]}</p>
+                <p>{currentDate.getDate()}</p>
               </div>
             )
           })}
@@ -223,7 +248,7 @@ const Appointment = () => {
               </p>
             ))
           ) : (
-            <p className='text-gray-400 italic text-sm py-2'>No available slots for this day.</p>
+            <p className='text-gray-400 italic text-sm py-2'>Không có lịch khám nào vào ngày này.</p>
           )}
         </div>
 

@@ -52,7 +52,7 @@ export const SectionPrevArrow = (props) => {
 // --- 4. SECTION CHÍNH ---
 const Section = ({
     title,
-    btnText = "See more", // Sửa thành tiếng Anh
+    btnText = "Xem thêm", // Sửa thành tiếng Anh
     bgColor = "bg-white",
     children,
     onBtnClick,

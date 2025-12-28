@@ -6,9 +6,11 @@ import { AppContext } from '../../context/AppContext';
 const QuickBookingForm = ({ onCloseModal }) => {
 
     const { backendUrl, doctors, specializations, token, setToken } = useContext(AppContext);
-    const daysOfWeek = ['CN', 'Hai', 'Ba', 'Tư', 'Năm', 'Sáu', 'Bảy'];
 
-    // --- STATE DỮ LIỆU & UI ---
+    // Map hiển thị
+    const dbDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const displayDays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
     const [docSlots, setDocSlots] = useState([]);
     const [slotIndex, setSlotIndex] = useState(0);
     const [slotTime, setSlotTime] = useState('');
@@ -17,171 +19,187 @@ const QuickBookingForm = ({ onCloseModal }) => {
     const [bookingType, setBookingType] = useState('Clinic');
 
     const [formData, setFormData] = useState({
-        speciality: '',
-        name: '',
-        phone: '',
-        email: '',
-        dob: '',
-        gender: 'Male',
-        address: ''
+        speciality: '', name: '', phone: '', email: '', dob: '', gender: 'Male', address: ''
     });
 
-    // --- 1. LẤY DATA BÁC SĨ (Giữ nguyên) ---
     const selectedDoctorObj = useMemo(() => doctors.find(doc => doc._id === selectedDocId), [selectedDocId, doctors]);
+
     const availableDoctors = useMemo(() => {
         if (!formData.speciality) return [];
         return doctors.filter(doc => doc.specializationId === formData.speciality || doc.speciality === formData.speciality);
     }, [formData.speciality, doctors]);
 
-    // --- 2. LOGIC TẠO SLOT (Giữ nguyên logic đã tối ưu trước đó) ---
+    // --- LOGIC TẠO SLOT (RANGE TIME) ---
     useEffect(() => {
-        if (!selectedDoctorObj) { setDocSlots([]); return; }
-        const getAvailableSlots = () => {
+        if (!selectedDoctorObj || !selectedDoctorObj.availableTime || selectedDoctorObj.availableTime.length === 0) {
+            setDocSlots([]); return;
+        }
+
+        const generateSlotsFromSchedule = () => {
             let allSlots = [];
             let today = new Date();
+
             for (let i = 0; i < 14; i++) {
                 let currentDate = new Date(today);
                 currentDate.setDate(today.getDate() + i);
-                let endTime = new Date(today);
-                endTime.setDate(today.getDate() + i);
-                endTime.setHours(21, 0, 0, 0);
 
-                if (i === 0) {
-                    let curHour = currentDate.getHours();
-                    if (curHour >= 10) {
-                        currentDate.setHours(curHour + 1);
-                        currentDate.setMinutes(currentDate.getMinutes() > 30 ? 30 : 0);
-                    } else {
-                        currentDate.setHours(10);
-                        currentDate.setMinutes(0);
-                    }
-                } else {
-                    currentDate.setHours(10);
-                    currentDate.setMinutes(0);
-                }
-                currentDate.setSeconds(0);
-                currentDate.setMilliseconds(0);
+                let dayName = dbDays[currentDate.getDay()];
+                let scheduleForDay = selectedDoctorObj.availableTime.find(item => item.day === dayName);
 
-                let timeSlots = [];
-                while (currentDate < endTime) {
-                    let startHours = currentDate.getHours();
-                    let startMinutes = currentDate.getMinutes();
-                    let endSlotTime = new Date(currentDate);
-                    endSlotTime.setMinutes(endSlotTime.getMinutes() + 30);
-                    let endHours = endSlotTime.getHours();
-                    let endMinutes = endSlotTime.getMinutes();
-                    let slotRange = `${startHours.toString().padStart(2, '0')}:${startMinutes.toString().padStart(2, '0')} - ${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
-                    const slotDateKey = `${currentDate.getDate()}_${currentDate.getMonth() + 1}_${currentDate.getFullYear()}`;
-                    const bookedSlots = selectedDoctorObj.slots_booked || {};
-                    if (!(bookedSlots[slotDateKey] && bookedSlots[slotDateKey].includes(slotRange))) {
-                        timeSlots.push({ datetime: new Date(currentDate), time: slotRange });
-                    }
-                    currentDate.setMinutes(currentDate.getMinutes() + 30);
-                }
-                const dateObj = new Date(today.getTime() + i * 86400000);
-                if (timeSlots.length > 0 || i < 3) {
-                    allSlots.push({
-                        day: daysOfWeek[dateObj.getDay()],
-                        date: dateObj.getDate(),
-                        displayDate: dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
-                        backendDate: `${dateObj.getDate()}_${dateObj.getMonth() + 1}_${dateObj.getFullYear()}`,
-                        slots: timeSlots
+                let timeSlots = []; // Mặc định là mảng rỗng nếu không có lịch
+
+                if (scheduleForDay && scheduleForDay.sessions) {
+                    scheduleForDay.sessions.forEach(session => {
+                        let [startHour, startMin] = session.start.split(':').map(Number);
+                        let [endHour, endMin] = session.end.split(':').map(Number);
+                        let duration = session.duration || 30;
+
+                        let startTime = new Date(currentDate);
+                        startTime.setHours(startHour, startMin, 0, 0);
+
+                        let endTime = new Date(currentDate);
+                        endTime.setHours(endHour, endMin, 0, 0);
+
+                        // Xử lý ngày hôm nay: Bỏ qua các giờ đã qua
+                        if (i === 0) {
+                            let now = new Date();
+                            if (startTime < now) {
+                                startTime = new Date(now);
+                                let minutes = startTime.getMinutes();
+                                if (minutes > 30) {
+                                    startTime.setHours(startTime.getHours() + 1);
+                                    startTime.setMinutes(0);
+                                } else {
+                                    startTime.setMinutes(30);
+                                }
+                                startTime.setSeconds(0);
+                            }
+                        }
+
+                        let currentSlot = new Date(startTime);
+
+                        while (currentSlot < endTime) {
+                            // 1. Format Giờ Bắt đầu (08:00)
+                            const sHour = currentSlot.getHours().toString().padStart(2, '0');
+                            const sMin = currentSlot.getMinutes().toString().padStart(2, '0');
+                            const startString = `${sHour}:${sMin}`;
+
+                            // 2. Tính Giờ Kết thúc (08:30)
+                            let slotEnd = new Date(currentSlot);
+                            slotEnd.setMinutes(currentSlot.getMinutes() + duration);
+                            const eHour = slotEnd.getHours().toString().padStart(2, '0');
+                            const eMin = slotEnd.getMinutes().toString().padStart(2, '0');
+                            const endString = `${eHour}:${eMin}`;
+
+                            // 3. Chuỗi hiển thị (08:00 - 08:30)
+                            const displayString = `${startString} - ${endString}`;
+
+                            const slotDateKey = `${currentDate.getDate()}_${currentDate.getMonth() + 1}_${currentDate.getFullYear()}`;
+                            const isBooked = selectedDoctorObj.slots_booked &&
+                                selectedDoctorObj.slots_booked[slotDateKey] &&
+                                selectedDoctorObj.slots_booked[slotDateKey].includes(startString); // Check theo Start Time
+
+                            if (!isBooked) {
+                                timeSlots.push({
+                                    time: displayString,     // Để hiển thị UI
+                                    startTime: startString,  // Để gửi Backend
+                                    datetime: new Date(currentSlot)
+                                });
+                            }
+                            currentSlot.setMinutes(currentSlot.getMinutes() + duration);
+                        }
                     });
+                    // Sort lại slot trong ngày cho chắc chắn
+                    timeSlots.sort((a, b) => a.datetime - b.datetime);
                 }
+
+                // Luôn push vào allSlots dù có slot hay không để giữ đúng index 14 ngày
+                allSlots.push({
+                    day: displayDays[currentDate.getDay()],
+                    dayName: dayName,
+                    date: currentDate.getDate(),
+                    displayDate: currentDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+                    backendDate: `${currentDate.getDate()}_${currentDate.getMonth() + 1}_${currentDate.getFullYear()}`,
+                    slots: timeSlots
+                });
             }
             setDocSlots(allSlots);
             setSlotIndex(0);
             setSlotTime('');
         };
-        getAvailableSlots();
+        generateSlotsFromSchedule();
     }, [selectedDoctorObj]);
 
-    // --- 3. HANDLERS ---
+    // --- HANDLER ---
     const handleOnChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
         if (e.target.name === 'speciality') { setSelectedDocId(''); setSlotTime(''); }
     };
 
-    // --- QUAN TRỌNG: HÀM XỬ LÝ ĐẶT LỊCH MỚI ---
     const handleBookAppointment = async () => {
-        // 1. Validation
         if (!formData.speciality) return toast.warn("Vui lòng chọn chuyên khoa!");
         if (!selectedDocId) return toast.warn("Vui lòng chọn bác sĩ!");
         if (!slotTime) return toast.warn("Vui lòng chọn giờ khám!");
-        if (!token && (!formData.name || !formData.phone || !formData.email || !formData.dob)) {
-            return toast.warn("Vui lòng nhập đầy đủ thông tin cá nhân!");
-        }
+        if (!token && (!formData.name || !formData.phone)) return toast.warn("Vui lòng nhập thông tin cá nhân!");
 
         setLoading(true);
-
         try {
             let currentToken = token;
-
-            // 2. NẾU CHƯA LOGIN -> GỌI API ĐĂNG KÝ TRƯỚC
             if (!currentToken) {
-                // Tạo payload đăng ký
+                // ... (Logic Register Code cũ) ...
+                // Giả sử logic tạo user ở đây (code cũ của bạn)
                 const registerPayload = {
-                    name: formData.name,
-                    email: formData.email,
-                    password: "ngbbn2712", // Mật khẩu mặc định theo yêu cầu
-                    phone: formData.phone,
-                    dob: formData.dob,
-                    gender: formData.gender,
-                    address: formData.address || ""
+                    name: formData.name, email: formData.email, password: "ngbbn2712",
+                    phone: formData.phone, dob: formData.dob, gender: formData.gender, address: formData.address || ""
                 };
-
                 try {
-                    // Gọi API Register chuẩn của hệ thống
                     const regRes = await axios.post(backendUrl + '/api/user/register', registerPayload);
-
                     if (regRes.data.success) {
                         currentToken = regRes.data.token;
-                        // Lưu token ngay lập tức
                         setToken(currentToken);
                         localStorage.setItem('token', currentToken);
                         toast.success("Đã tự động tạo tài khoản cho bạn!");
                     } else {
                         toast.error("Đăng ký thất bại: " + regRes.data.message);
-                        setLoading(false);
-                        return; // Dừng lại nếu không tạo được user
+                        setLoading(false); return;
                     }
                 } catch (regError) {
-                    console.error("Lỗi đăng ký:", regError);
-                    // Nếu lỗi là do email đã tồn tại, có thể xem xét gọi API login hoặc báo lỗi
                     toast.error(regError.response?.data?.message || "Lỗi khi tạo tài khoản mới");
-                    setLoading(false);
-                    return;
+                    setLoading(false); return;
                 }
             }
 
-            // 3. TIẾN HÀNH ĐẶT LỊCH (Lúc này chắc chắn đã có currentToken)
+            // [SỬA LỖI MẤT DATE]
+            // Tính ngày dựa trên index thay vì phụ thuộc vào docSlots[index].backendDate có thể bị lỗi nếu mảng slot rỗng
+            const dateObj = new Date();
+            dateObj.setDate(dateObj.getDate() + slotIndex);
+            const finalSlotDate = `${dateObj.getDate()}_${dateObj.getMonth() + 1}_${dateObj.getFullYear()}`;
+
+            // [SỬA LỖI TIME]
+            // slotTime hiện tại: "08:00 - 08:30" -> Lấy "08:00"
+            const finalTime = slotTime.split(' - ')[0];
+
             const appointmentPayload = {
                 docId: selectedDocId,
-                slotDate: docSlots[slotIndex].backendDate,
-                slotTime: slotTime,
+                slotDate: finalSlotDate, // Sử dụng ngày đã tính toán lại
+                slotTime: finalTime,     // Gửi giờ sạch 08:00
                 amount: selectedDoctorObj.fees,
                 appointmentType: bookingType,
-                userData: null // Đã có token nên không cần gửi userData nữa
+                userData: null
             };
 
-            // Gọi API book-appointment chuẩn (không dùng guest nữa)
-            const bookRes = await axios.post(
-                backendUrl + '/api/user/book-appointment',
-                appointmentPayload,
-                { headers: { token: currentToken } } // Header chứa token vừa tạo/hoặc có sẵn
-            );
+            const bookRes = await axios.post(backendUrl + '/api/user/book-appointment', appointmentPayload, { headers: { token: currentToken } });
 
             if (bookRes.data.success) {
                 toast.success("Đặt lịch thành công!");
-                setSlotTime(''); // Reset giờ
-                if (onCloseModal) onCloseModal(); // Đóng modal, không chuyển trang
+                setSlotTime('');
+                if (onCloseModal) onCloseModal();
             } else {
                 toast.error(bookRes.data.message);
             }
-
         } catch (error) {
             console.error(error);
-            toast.error(error.response?.data?.message || "Lỗi kết nối server");
+            toast.error("Lỗi hệ thống");
         } finally {
             setLoading(false);
         }
@@ -203,7 +221,7 @@ const QuickBookingForm = ({ onCloseModal }) => {
             <div className="p-6 space-y-4">
                 <h3 className="text-lg font-bold text-gray-800 text-center uppercase">ĐẶT LỊCH NHANH</h3>
 
-                {/* 1. CHỌN CHUYÊN KHOA */}
+                {/* 1. CHUYÊN KHOA */}
                 <div>
                     <label className="text-xs font-bold text-gray-500 ml-1">CHUYÊN KHOA <span className='text-red-500'>*</span></label>
                     <select name="speciality" value={formData.speciality} onChange={handleOnChange} className="w-full mt-1 p-2.5 border border-gray-300 rounded text-sm bg-gray-50 focus:border-blue-500 outline-none">
@@ -212,7 +230,7 @@ const QuickBookingForm = ({ onCloseModal }) => {
                     </select>
                 </div>
 
-                {/* 2. CHỌN BÁC SĨ */}
+                {/* 2. BÁC SĨ */}
                 {formData.speciality && (
                     <div className="animate-fade-in-up">
                         <label className="text-xs font-bold text-gray-500 ml-1">BÁC SĨ <span className='text-red-500'>*</span></label>
@@ -223,36 +241,42 @@ const QuickBookingForm = ({ onCloseModal }) => {
                     </div>
                 )}
 
-                {/* 3. CHỌN SLOT NGÀY & GIỜ */}
+                {/* 3. LỊCH KHÁM */}
                 {selectedDocId && (
                     <div className="mt-2 animate-fade-in-up">
-                        <div className="bg-blue-50 p-3 rounded border border-blue-100 mb-3 flex justify-between items-center">
-                            <span className="text-sm font-bold text-gray-700">📅 Chọn lịch khám</span>
-                            <span className="text-xs font-bold text-blue-700 bg-white px-2 py-1 rounded shadow-sm">
-                                {docSlots[slotIndex]?.displayDate} {slotTime ? `| ${slotTime}` : ''}
-                            </span>
-                        </div>
-                        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                            {docSlots.map((item, index) => (
-                                <div key={index} onClick={() => { setSlotIndex(index); setSlotTime(''); }} className={`min-w-[4.5rem] text-center py-2 px-2 rounded-lg cursor-pointer border transition-all ${slotIndex === index ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400'}`}>
-                                    <p className="text-[10px] uppercase font-bold opacity-80">{item.day}</p>
-                                    <p className="text-lg font-bold">{item.date}</p>
+                        {docSlots.length > 0 ? (
+                            <>
+                                <div className="bg-blue-50 p-3 rounded border border-blue-100 mb-3 flex justify-between items-center">
+                                    <span className="text-sm font-bold text-gray-700">📅 Chọn lịch khám</span>
+                                    <span className="text-xs font-bold text-blue-700 bg-white px-2 py-1 rounded shadow-sm">
+                                        {docSlots[slotIndex]?.displayDate} {slotTime ? `| ${slotTime}` : ''}
+                                    </span>
                                 </div>
-                            ))}
-                        </div>
-                        <div className="mt-3 flex gap-2 flex-wrap">
-                            {docSlots[slotIndex]?.slots.length > 0 ? (
-                                docSlots[slotIndex].slots.map((item, index) => (
-                                    <button key={index} onClick={() => setSlotTime(item.time)} className={`px-3 py-1.5 text-[11px] font-medium rounded-full border transition-all ${slotTime === item.time ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:text-blue-600 hover:border-blue-400'}`}>
-                                        {item.time}
-                                    </button>
-                                ))
-                            ) : (<p className="text-xs text-gray-400 italic w-full text-center py-2">Không còn lịch trống.</p>)}
-                        </div>
+                                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                                    {docSlots.map((item, index) => (
+                                        <div key={index} onClick={() => { setSlotIndex(index); setSlotTime(''); }} className={`min-w-[4.5rem] text-center py-2 px-2 rounded-lg cursor-pointer border transition-all ${slotIndex === index ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400'}`}>
+                                            <p className="text-[10px] uppercase font-bold opacity-80">{item.day}</p>
+                                            <p className="text-lg font-bold">{item.date}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="mt-3 flex gap-2 flex-wrap">
+                                    {docSlots[slotIndex]?.slots.length > 0 ? (
+                                        docSlots[slotIndex].slots.map((item, index) => (
+                                            <button key={index} onClick={() => setSlotTime(item.time)} className={`px-3 py-1.5 text-[11px] font-medium rounded-full border transition-all ${slotTime === item.time ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:text-blue-600 hover:border-blue-400'}`}>
+                                                {item.time}
+                                            </button>
+                                        ))
+                                    ) : (<p className="text-xs text-gray-400 italic w-full text-center py-2">Hết giờ trống.</p>)}
+                                </div>
+                            </>
+                        ) : (
+                            <p className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded border border-dashed">Bác sĩ này chưa có lịch trống.</p>
+                        )}
                     </div>
                 )}
 
-                {/* 4. FORM THÔNG TIN (CHỈ HIỆN KHI CHƯA CÓ TOKEN) */}
+                {/* 4. FORM THÔNG TIN (Giữ nguyên) */}
                 {!token && (
                     <div className="animate-fade-in-down border-t border-dashed border-gray-300 pt-4 mt-2">
                         <p className="text-xs font-bold text-gray-500 uppercase mb-3">Thông tin đăng ký nhanh</p>

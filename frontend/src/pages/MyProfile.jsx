@@ -3,6 +3,7 @@ import { AppContext } from '../context/AppContext.jsx'
 import { assets } from '../assets/assets.js'
 import axios from 'axios'
 import { toast } from 'react-toastify'
+
 const MyProfile = () => {
 
   const { userData, setUserData, token, backendUrl, loadUserProfileData } = useContext(AppContext)
@@ -27,23 +28,18 @@ const MyProfile = () => {
 
       const { data } = await axios.post(backendUrl + '/api/user/update-profile', formData, { headers: { token } })
       if (data.success) {
-        toast.success(data.message)
+        toast.success("Cập nhật thông tin thành công")
         await loadUserProfileData()
         setIsEdit(false)
         setImage(false)
-
       } else {
         toast.error(data.message)
       }
-
-
     } catch (error) {
       console.log(error)
       toast.error(error.message)
     }
   }
-
-
 
   return userData && (
     <div className='max-w-lg flex flex-col gap-2 text-sm'>
@@ -59,7 +55,6 @@ const MyProfile = () => {
           : <img className='w-36 rounded' src={userData.image} alt="" />
       }
 
-
       {
         isEdit
           ? <input className='bg-gray-50 text-3xl font-medium max-w-lg mt-4' type='text' value={userData.name} onChange={e => setUserData(prev => ({ ...prev, name: e.target.value }))}></input>
@@ -67,18 +62,18 @@ const MyProfile = () => {
       }
       <hr className='bg-zinc-400 h-[1px] border-none' />
       <div>
-        <p className='text-neutral-500 underline mt-3 '>CONTACT INFORMATION</p>
+        <p className='text-neutral-500 underline mt-3 '>THÔNG TIN LIÊN HỆ</p>
         <div className='grid grid-cols-[1fr_3fr] gap-y-2.5 mt-3 text-neutral-700'>
-          <p className='font-medium'>Email id:</p>
+          <p className='font-medium'>Email:</p>
           <p className='text-blue-500'>{userData.email}</p>
-          <p className='font-medium'>Phone:</p>
+          <p className='font-medium'>Số điện thoại:</p>
           {
             isEdit
               ? <input className='bg-gray-100 max-w-52' type='text' value={userData.phone} onChange={e => setUserData(prev => ({ ...prev, phone: e.target.value }))}></input>
               : <p className='text-blue-400'>{userData.phone}</p>
           }
           <div className='font-medium'>
-            Address:
+            Địa chỉ:
             {
               isEdit
                 ? <div>
@@ -87,6 +82,7 @@ const MyProfile = () => {
                     type='text'
                     value={userData.address ? userData.address.line1 : ''}
                     onChange={e => setUserData(prev => ({ ...prev, address: { ...prev.address, line1: e.target.value } }))}
+                    placeholder="Địa chỉ dòng 1"
                   />
                   <br />
                   <input
@@ -94,6 +90,7 @@ const MyProfile = () => {
                     type='text'
                     value={userData.address ? userData.address.line2 : ''}
                     onChange={e => setUserData(prev => ({ ...prev, address: { ...prev.address, line2: e.target.value } }))}
+                    placeholder="Địa chỉ dòng 2"
                   />
                 </div>
                 : <div className='text-gray-500'>
@@ -106,40 +103,35 @@ const MyProfile = () => {
         </div>
       </div>
 
-
-
       <div>
-        <p className='text-neutral-500 underline mt-3 '>BASIC INFORMATION</p>
+        <p className='text-neutral-500 underline mt-3 '>THÔNG TIN CƠ BẢN</p>
         <div className='grid grid-cols-[1fr_3fr] gap-y-2.5 mt-3 text-neutral-700'>
-          <p className='font-medium '>Gender:</p>
+          <p className='font-medium '>Giới tính:</p>
           {
             isEdit
               ? <select className='max-w-20 bg-gray-100' onChange={(e) => setUserData(prev => ({ ...prev, gender: e.target.value }))} value={userData.gender}>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
+                <option value="Male">Nam</option>
+                <option value="Female">Nữ</option>
               </select>
-              : <p className='text-gray-400'>{userData.gender}</p>
+              : <p className='text-gray-400'>{userData.gender === 'Male' ? 'Nam' : userData.gender === 'Female' ? 'Nữ' : userData.gender}</p>
           }
-          <p className='font-medium'>Birthday:</p>
+          <p className='font-medium'>Ngày sinh:</p>
           {
             isEdit
               ? <input className='max-w-28 bg-gray-100' type='date' onChange={(e) => setUserData(prev => ({ ...prev, dob: e.target.value }))} value={userData.dob === "Not Selected" ? "" : userData.dob}></input>
-              : <p className='text-gray-400'>{userData.dob}</p>
+              : <p className='text-gray-400'>{userData.dob === "Not Selected" ? "Chưa cập nhật" : userData.dob}</p>
           }
         </div>
       </div>
       <div>
         {
           isEdit
-            ? <button className='border border-primary px-8 py-2 rounded-full hover:bg-primary hover:text-white transition-all' onClick={updateUserProfileData}>Save Information</button>
-            : <button className='border border-primary px-8 py-2 rounded-full hover:bg-primary hover:text-white transition-all' onClick={() => setIsEdit(true)}>Edit</button>
+            ? <button className='border border-primary px-8 py-2 rounded-full hover:bg-primary hover:text-white transition-all' onClick={updateUserProfileData}>Lưu thông tin</button>
+            : <button className='border border-primary px-8 py-2 rounded-full hover:bg-primary hover:text-white transition-all' onClick={() => setIsEdit(true)}>Chỉnh sửa</button>
         }
       </div>
 
-
-
     </div>
-
   )
 }
 
