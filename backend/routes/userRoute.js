@@ -2,7 +2,7 @@ import express from 'express';
 import {
     registerUser, loginUser, getProfile, updateProfile, bookAppointment, bookGuestAppointment, listAppointments, cancelAppointment, createPayPalPayment, executePayPalPayment
     , createGuestPayment, executeGuestPayment, chatWithAI,
-    forgotPassword, resetPassword, addReview, getUserNotifications, getAllNurses
+    forgotPassword, resetPassword, addReview, getUserNotifications, getAllNurses, getSpecialityList
 } from '../controllers/userController.js';
 import authUser from '../middlewares/authUser.js';
 import upload from '../middlewares/multer.js';
@@ -37,4 +37,5 @@ userRouter.post('/book-guest-appointment', bookGuestAppointment);
 userRouter.post('/create-guest-payment', createGuestPayment);
 userRouter.get('/payment-execute', executeGuestPayment);
 userRouter.get('/get-nurses', getAllNurses);
+userRouter.get('/get-speciality', getSpecialityList)
 export default userRouter

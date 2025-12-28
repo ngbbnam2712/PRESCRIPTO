@@ -53,7 +53,17 @@ const userSchema = new mongoose.Schema({
     timestamps: true,
     minimize: false
 })
-
+userSchema.pre('save', function (next) {
+    // Nếu image bị thay đổi (từ frontend của bạn bè) -> cập nhật avatar
+    if (this.isModified('image')) {
+        this.avatar = this.image;
+    }
+    // Nếu avatar bị thay đổi (từ dữ liệu import/frontend của bạn) -> cập nhật image
+    else if (this.isModified('avatar')) {
+        this.image = this.avatar;
+    }
+    next();
+});
 
 const userModel = mongoose.model("User", userSchema)
 

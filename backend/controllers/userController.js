@@ -18,6 +18,7 @@ import reviewModel from '../models/reviewModel.js'
 import notificationModel from '../models/notificationModel.js'
 import guestRequestModel from '../models/guestRequestModel.js'
 import nurseModel from "../models/nurseModel.js";
+import Specialization from '../models/SpecializationModel.js'
 //API to register user
 
 
@@ -1435,8 +1436,23 @@ const getAllNurses = async (req, res) => {
     }
 }
 
+const getSpecialityList = async (req, res) => {
+    try {
+        // Lấy tất cả các bản ghi, chỉ lấy các trường cần thiết nếu muốn tối ưu (ở đây lấy hết)
+        const specialities = await Specialization.find({});
+
+        res.json({
+            success: true,
+            specialities // Trả về mảng dữ liệu
+        });
+
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+}
 
 export {
     registerUser, loginUser, getProfile, updateProfile, bookAppointment, bookGuestAppointment, listAppointments, cancelAppointment, createPayPalPayment, executePayPalPayment, createGuestPayment, executeGuestPayment, chatWithAI,
-    forgotPassword, resetPassword, addReview, checkExpiredAppointments, getUserNotifications, getAllNurses
+    forgotPassword, resetPassword, addReview, checkExpiredAppointments, getUserNotifications, getAllNurses, getSpecialityList
 }

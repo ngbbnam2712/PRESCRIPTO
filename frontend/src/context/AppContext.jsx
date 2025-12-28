@@ -15,6 +15,24 @@ const AppContextProvider = (props) => {
     const [nurses, setNurses] = useState([])
     const [token, setToken] = useState(localStorage.getItem('token') ? localStorage.getItem('token') : false)
     const [userData, setUserData] = useState(false)
+    const [specializations, setSpecializations] = useState([]);
+
+
+    const getSpecializationData = async () => {
+        try {
+            // Giả sử API của bạn là /api/specialization/list
+            const { data } = await axios.get(backendUrl + '/api/user/get-speciality');
+            if (data.success) {
+                setSpecializations(data.specialities); // Lưu vào state
+            } else {
+                toast.error(data.message);
+            }
+        } catch (error) {
+            console.log(error);
+            toast.error(error.message);
+        }
+    }
+
 
 
     const loadUserProfileData = async () => {
@@ -75,6 +93,7 @@ const AppContextProvider = (props) => {
         getDoctorsData,
         loadUserProfileData,
         nurses, getNursesData,
+        specializations, setSpecializations
     }
 
     useEffect(() => {
@@ -88,6 +107,7 @@ const AppContextProvider = (props) => {
     useEffect(() => {
         getDoctorsData();
         getNursesData();
+        getSpecializationData();
     }, []);
 
     return (

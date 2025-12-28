@@ -19,7 +19,7 @@ const Home = () => {
       <Header />
       <Specialty />
       <RemoteExam />
-      <GeneralCheckup />
+      {/* <GeneralCheckup /> */}
       <OutstandingDoctor />
 
     </div>

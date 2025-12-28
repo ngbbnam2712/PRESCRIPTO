@@ -56,20 +56,19 @@ const Appointment = () => {
   const getAvailableSlots = async () => {
     if (!docInfo) return;
 
-    let allSlots = [] // Mảng chứa toàn bộ 7 ngày
+    let allSlots = []
     let today = new Date()
 
-    for (let i = 0; i < 7; i++) {
+    // THAY ĐỔI 1: Kéo dài lịch lên 14 ngày
+    for (let i = 0; i < 14; i++) {
       let currentDate = new Date(today)
       currentDate.setDate(today.getDate() + i)
 
-      // Thiết lập giờ kết thúc là 21:00 của ngày đang xét
       let endTime = new Date(today)
       endTime.setDate(today.getDate() + i)
       endTime.setHours(21, 0, 0, 0)
 
       if (i === 0) {
-        // Nếu là ngày hôm nay, bắt đầu từ giờ hiện tại + 1
         let curHour = currentDate.getHours()
         if (curHour >= 10) {
           currentDate.setHours(curHour + 1)
@@ -79,7 +78,6 @@ const Appointment = () => {
           currentDate.setMinutes(0)
         }
       } else {
-        // Các ngày sau bắt đầu từ 10:00 sáng
         currentDate.setHours(10)
         currentDate.setMinutes(0)
       }
@@ -89,28 +87,35 @@ const Appointment = () => {
 
       let timeSlots = []
       while (currentDate < endTime) {
-        let hours = currentDate.getHours()
-        let minutes = currentDate.getMinutes()
-        let ampm = hours >= 12 ? 'PM' : 'AM'
-        let displayHour = hours % 12 || 12
-        let displayMinute = minutes < 10 ? '0' + minutes : minutes
-        let formattedTime = `${displayHour}:${displayMinute} ${ampm}`
+        // THAY ĐỔI 2: Định dạng slotTime thành "HH:mm - HH:mm"
+        let startHours = currentDate.getHours()
+        let startMinutes = currentDate.getMinutes()
+
+        // Tạo thời gian kết thúc (sau 30 phút)
+        let endSlotTime = new Date(currentDate)
+        endSlotTime.setMinutes(endSlotTime.getMinutes() + 30)
+        let endHours = endSlotTime.getHours()
+        let endMinutes = endSlotTime.getMinutes()
+
+        let formattedStart = `${startHours.toString().padStart(2, '0')}:${startMinutes.toString().padStart(2, '0')}`
+        let formattedEnd = `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`
+        let slotRange = `${formattedStart} - ${formattedEnd}`
 
         const slotDate = `${currentDate.getDate()}_${currentDate.getMonth() + 1}_${currentDate.getFullYear()}`
         const bookedSlots = docInfo.slots_booked || {}
-        const isSlotAvailable = bookedSlots[slotDate] && bookedSlots[slotDate].includes(formattedTime) ? false : true
+        const isSlotAvailable = bookedSlots[slotDate] && bookedSlots[slotDate].includes(slotRange) ? false : true
 
         if (isSlotAvailable) {
           timeSlots.push({
             datetime: new Date(currentDate),
-            time: formattedTime
+            time: slotRange
           })
         }
         currentDate.setMinutes(currentDate.getMinutes() + 30)
       }
       allSlots.push(timeSlots)
     }
-    setDocSlots(allSlots) // Cập nhật state 1 lần duy nhất
+    setDocSlots(allSlots)
   }
 
   const bookAppointments = async () => {
@@ -151,7 +156,7 @@ const Appointment = () => {
   }, [docInfo])
 
   return docInfo ? (
-    <div>
+    <div className='pb-10'>
       <div className='flex flex-col sm:flex-row gap-4'>
         <div>
           <img className='bg-primary w-full sm:max-w-72 rounded-lg' src={docInfo.image} alt="" />
@@ -165,15 +170,10 @@ const Appointment = () => {
             <button className='py-0.5 px-2 border text-xs rounded-full'>{docInfo.experience}</button>
           </div>
           <div className='flex items-center gap-2 mt-2'>
-            {/* Hiển thị số sao */}
             <StarRating rating={docInfo.averageRating} />
-
-            {/* Hiển thị điểm số cụ thể */}
             <p className='text-sm text-gray-800 font-medium'>
               {docInfo.averageRating > 0 ? docInfo.averageRating.toFixed(1) : "0.0"}
             </p>
-
-            {/* Hiển thị tổng số lượt đánh giá */}
             <p className='text-xs text-gray-500'>
               ({docInfo.totalRatings || 0} reviews)
             </p>
@@ -195,50 +195,59 @@ const Appointment = () => {
           <button onClick={() => setBookingMode('Remote')} className={`flex items-center gap-2 px-6 py-3 rounded-full border transition-all ${bookingMode === 'Remote' ? 'bg-primary text-white shadow-md' : 'bg-white'}`}>Remote</button>
         </div>
 
-        <div className='flex gap-3 items-center w-full overflow-x-scroll mt-4'>
-          {docSlots.length > 0 && docSlots.map((item, index) => (
-            <div onClick={() => setSlotIndex(index)} className={`text-center py-6 min-w-16 rounded-full cursor-pointer ${slotIndex === index ? 'bg-primary text-white' : 'border border-gray-200'}`} key={index}>
-              <p>{item[0] && daysOfWeek[item[0].datetime.getDay()]}</p>
-              <p>{item[0] && item[0].datetime.getDate()}</p>
-            </div>
-          ))}
+        <div className='flex gap-3 items-center w-full overflow-x-scroll mt-4 pb-2'>
+          {docSlots.length > 0 && docSlots.map((item, index) => {
+            // THAY ĐỔI 3: Vô hiệu hóa ngày không còn slot
+            const isFull = item.length === 0;
+            const dateObj = isFull ? new Date(new Date().setDate(new Date().getDate() + index)) : item[0].datetime;
+
+            return (
+              <div
+                onClick={() => !isFull && setSlotIndex(index)}
+                className={`text-center py-6 min-w-16 rounded-full cursor-pointer transition-all ${isFull ? 'bg-gray-100 border-dashed border-gray-300 opacity-50 cursor-not-allowed' : slotIndex === index ? 'bg-primary text-white scale-105' : 'border border-gray-200 hover:border-primary'}`}
+                key={index}
+              >
+                <p className='text-xs'>{daysOfWeek[dateObj.getDay()]}</p>
+                <p>{dateObj.getDate()}</p>
+                {isFull && <p className='text-[10px] text-red-500 font-bold'>FULL</p>}
+              </div>
+            )
+          })}
         </div>
 
         <div className='flex items-center gap-3 w-full overflow-x-scroll mt-4'>
-          {docSlots.length > 0 && docSlots[slotIndex]?.map((item, index) => (
-            <p key={index} onClick={() => setSlotTime(item.time)} className={`text-sm font-light flex-shrink-0 px-5 py-2 rounded-full cursor-pointer ${item.time === slotTime ? 'bg-primary text-white' : 'text-gray-400 border border-gray-300'}`}>
-              {item.time.toLowerCase()}
-            </p>
-          ))}
+          {docSlots.length > 0 && docSlots[slotIndex]?.length > 0 ? (
+            docSlots[slotIndex].map((item, index) => (
+              <p key={index} onClick={() => setSlotTime(item.time)} className={`text-sm font-light flex-shrink-0 px-5 py-2 rounded-full cursor-pointer transition-all ${item.time === slotTime ? 'bg-primary text-white' : 'text-gray-500 border border-gray-300 hover:border-primary'}`}>
+                {item.time}
+              </p>
+            ))
+          ) : (
+            <p className='text-gray-400 italic text-sm py-2'>No available slots for this day.</p>
+          )}
         </div>
 
-        <button onClick={bookAppointments} className='bg-primary text-white text-sm font-light px-14 py-3 rounded-full my-6 hover:brightness-90 transition-all'>
+        <button onClick={bookAppointments} className='bg-primary text-white text-sm font-light px-14 py-3 rounded-full my-6 hover:brightness-90 transition-all shadow-lg active:scale-95'>
           Book an appointment {bookingMode === 'Remote' ? '(Remote)' : ''}
         </button>
       </div>
 
-
-
-
-
-
-      {/* review */}
+      {/* review section */}
       <div className='mt-10 mx-5 sm:mx-0'>
         <p className='text-xl font-medium text-gray-800 mb-5'>
           Phản hồi bệnh nhân
           <span className='text-base font-normal text-gray-500 ml-2'>
-            (Hiển thị {reviews.length} bình luận mới nhất)
+            ({reviews.length} reviews)
           </span>
         </p>
 
         <div className='flex flex-col gap-6'>
           {reviews.length > 0 ? (
             reviews.map((item, index) => (
-              <div key={index} className='border-b border-gray-100 pb-4 bg-gray-50 p-4 rounded-lg'>
+              <div key={index} className='pb-4 bg-gray-50 p-4 rounded-lg border border-gray-100'>
                 <div className='flex items-center gap-3 mb-2'>
-                  {/* Ảnh user */}
                   <img
-                    className='w-10 h-10 rounded-full object-cover'
+                    className='w-10 h-10 rounded-full object-cover border border-white shadow-sm'
                     src={item.userId?.image || assets.upload_area}
                     alt=""
                   />
@@ -254,7 +263,7 @@ const Appointment = () => {
                     {new Date(item.createdAt).toLocaleDateString('vi-VN')}
                   </p>
                 </div>
-                <p className='text-gray-600 text-sm mt-1 ml-1'>{item.comment}</p>
+                <p className='text-gray-600 text-sm mt-1 italic'>"{item.comment}"</p>
               </div>
             ))
           ) : (
@@ -262,8 +271,6 @@ const Appointment = () => {
           )}
         </div>
       </div>
-
-
 
       <RelatedDoctors docId={docId} speciality={docInfo.speciality} />
     </div>

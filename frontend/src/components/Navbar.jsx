@@ -96,7 +96,7 @@ const Navbar = () => {
                       ) : (
                         notifications.map((item, index) => (
                           <div key={index} className='px-4 py-3 border-b border-gray-100 hover:bg-blue-50 transition-colors cursor-pointer'>
-                            <p className='text-gray-800 text-sm mb-1'>{item.content}</p>
+                            <p className='text-gray-800 text-sm mb-1'>{item.message}</p>
                             <p className='text-xs text-gray-400 text-right'>
                               {new Date(item.createdAt).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
                             </p>

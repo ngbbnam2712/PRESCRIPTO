@@ -1,106 +1,56 @@
-import React, { useState, useContext, useMemo, useEffect } from 'react';
+import React, { useState, useContext, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
-import { AppContext } from '../../context/AppContext.jsx';
-import BookingSuccessModal from '../HomePage/BookingSuccessModal.jsx';
-import BookingPaymentModal from '../HomePage/BookingPaymentModal.jsx';
-import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { AppContext } from '../../context/AppContext';
 
-const QuickBookingForm = ({ initialData, onCloseModal }) => {
+const QuickBookingForm = ({ onCloseModal }) => {
 
-    const { backendUrl, doctors } = useContext(AppContext);
-    const navigate = useNavigate();
-    const location = useLocation();
-    const [searchParams] = useSearchParams();
+    const { backendUrl, doctors, specializations, token, setToken } = useContext(AppContext);
+    const daysOfWeek = ['CN', 'Hai', 'Ba', 'Tư', 'Năm', 'Sáu', 'Bảy'];
 
-    const specialties = [
-        { speciality: 'General physician' },
-        { speciality: 'Gynecologist' },
-        { speciality: 'Dermatologist' },
-        { speciality: 'Pediatricians' },
-        { speciality: 'Neurologist' },
-        { speciality: 'Gastroenterologist' }
-    ];
-
-    const daysOfWeek = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-
-    // --- STATE QUẢN LÝ SLOT ---
-    const [docInfo, setDocInfo] = useState(null); // Lưu thông tin chi tiết bác sĩ (có slots_booked)
-    const [docSlots, setDocSlots] = useState([]); // Danh sách slot hiển thị
+    // --- STATE DỮ LIỆU & UI ---
+    const [docSlots, setDocSlots] = useState([]);
     const [slotIndex, setSlotIndex] = useState(0);
-    const [slotDate, setSlotDate] = useState('');
     const [slotTime, setSlotTime] = useState('');
+    const [selectedDocId, setSelectedDocId] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [bookingType, setBookingType] = useState('Clinic');
 
-    // --- STATE FORM ---
     const [formData, setFormData] = useState({
+        speciality: '',
         name: '',
         phone: '',
         email: '',
         dob: '',
         gender: 'Male',
-        line1: '',
-        line2: '',
-        reason: '',
-        appointmentType: 'Clinic',
-        speciality: '',
+        address: ''
     });
 
-    const [bookingType, setBookingType] = useState('clinic');
-    const [selectedDocId, setSelectedDocId] = useState('');
+    // --- 1. LẤY DATA BÁC SĨ (Giữ nguyên) ---
+    const selectedDoctorObj = useMemo(() => doctors.find(doc => doc._id === selectedDocId), [selectedDocId, doctors]);
+    const availableDoctors = useMemo(() => {
+        if (!formData.speciality) return [];
+        return doctors.filter(doc => doc.specializationId === formData.speciality || doc.speciality === formData.speciality);
+    }, [formData.speciality, doctors]);
 
-    // Modal states
-    const [showPaymentModal, setShowPaymentModal] = useState(false);
-    const [showSuccessModal, setShowSuccessModal] = useState(false);
-    const [loading, setLoading] = useState(false);
-
-    // --- 1. LẤY THÔNG TIN BÁC SĨ KHI CHỌN ---
+    // --- 2. LOGIC TẠO SLOT (Giữ nguyên logic đã tối ưu trước đó) ---
     useEffect(() => {
-        const fetchDocInfo = async () => {
-            if (selectedDocId) {
-                // Lấy thông tin bác sĩ từ danh sách có sẵn (hoặc gọi API nếu cần data mới nhất)
-                const doc = doctors.find(d => d._id === selectedDocId);
-                setDocInfo(doc);
-
-                // Reset slot khi đổi bác sĩ
-                setSlotTime('');
-                setSlotIndex(0);
-            } else {
-                setDocInfo(null);
-                setDocSlots([]);
-            }
-        };
-        fetchDocInfo();
-    }, [selectedDocId, doctors]);
-
-    // --- 2. LOGIC TẠO SLOT (Dựa trên logic bạn cung cấp + Thêm cấu trúc cho UI) ---
-    useEffect(() => {
-        const generateSlots = () => {
-            if (!docInfo) {
-                return;
-            }
-
-            // Reset mảng cũ
-            setDocSlots([]);
-
+        if (!selectedDoctorObj) { setDocSlots([]); return; }
+        const getAvailableSlots = () => {
+            let allSlots = [];
             let today = new Date();
-
-            // Loop 7 ngày
-            for (let i = 0; i < 7; i++) {
+            for (let i = 0; i < 14; i++) {
                 let currentDate = new Date(today);
                 currentDate.setDate(today.getDate() + i);
-
-                let endTime = new Date();
+                let endTime = new Date(today);
                 endTime.setDate(today.getDate() + i);
-                endTime.setHours(21, 0, 0, 0); // Kết thúc 9 PM
+                endTime.setHours(21, 0, 0, 0);
 
-                // --- Logic xử lý giờ bắt đầu (Start Time Logic) ---
                 if (i === 0) {
-                    let currentHour = currentDate.getHours();
-                    let currentMinute = currentDate.getMinutes();
-
-                    if (currentHour >= 10) {
-                        currentDate.setHours(currentHour + 1);
-                        currentDate.setMinutes(currentMinute > 30 ? 30 : 0);
+                    let curHour = currentDate.getHours();
+                    if (curHour >= 10) {
+                        currentDate.setHours(curHour + 1);
+                        currentDate.setMinutes(currentDate.getMinutes() > 30 ? 30 : 0);
                     } else {
                         currentDate.setHours(10);
                         currentDate.setMinutes(0);
@@ -109,334 +59,226 @@ const QuickBookingForm = ({ initialData, onCloseModal }) => {
                     currentDate.setHours(10);
                     currentDate.setMinutes(0);
                 }
-
                 currentDate.setSeconds(0);
                 currentDate.setMilliseconds(0);
 
                 let timeSlots = [];
-
-                // --- Vòng lặp tạo slot ---
                 while (currentDate < endTime) {
-                    let hours = currentDate.getHours();
-                    let minutes = currentDate.getMinutes();
-                    let ampm = hours >= 12 ? 'PM' : 'AM';
-
-                    let displayHour = hours % 12;
-                    displayHour = displayHour ? displayHour : 12;
-                    let displayMinute = minutes < 10 ? '0' + minutes : minutes;
-
-                    let formatedTime = `${displayHour}:${displayMinute} ${ampm}`; // 10:00 AM
-
-                    // Tạo key ngày để check trong slots_booked
-                    let day = currentDate.getDate();
-                    let month = currentDate.getMonth() + 1;
-                    let year = currentDate.getFullYear();
-
-                    const slotDateKey = day + '_' + month + '_' + year; // Format key trong DB: 24_12_2025
-
-                    // Lấy danh sách đã book từ docInfo
-                    const bookedSlots = docInfo.slots_booked || {};
-
-                    // Kiểm tra trùng lịch
-                    const isSlotAvailable = bookedSlots[slotDateKey] && bookedSlots[slotDateKey].includes(formatedTime) ? false : true;
-
-                    if (isSlotAvailable) {
-                        timeSlots.push({
-                            datetime: new Date(currentDate),
-                            time: formatedTime
-                        });
+                    let startHours = currentDate.getHours();
+                    let startMinutes = currentDate.getMinutes();
+                    let endSlotTime = new Date(currentDate);
+                    endSlotTime.setMinutes(endSlotTime.getMinutes() + 30);
+                    let endHours = endSlotTime.getHours();
+                    let endMinutes = endSlotTime.getMinutes();
+                    let slotRange = `${startHours.toString().padStart(2, '0')}:${startMinutes.toString().padStart(2, '0')} - ${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
+                    const slotDateKey = `${currentDate.getDate()}_${currentDate.getMonth() + 1}_${currentDate.getFullYear()}`;
+                    const bookedSlots = selectedDoctorObj.slots_booked || {};
+                    if (!(bookedSlots[slotDateKey] && bookedSlots[slotDateKey].includes(slotRange))) {
+                        timeSlots.push({ datetime: new Date(currentDate), time: slotRange });
                     }
                     currentDate.setMinutes(currentDate.getMinutes() + 30);
                 }
-
-                // --- Tạo cấu trúc dữ liệu cho UI hiển thị ---
-                const dateObj = new Date(today.getTime() + i * 24 * 60 * 60 * 1000);
-
-                setDocSlots(prev => [...prev, {
-                    datetime: dateObj,
-                    day: daysOfWeek[dateObj.getDay()], // MON, TUE...
-                    date: dateObj.getDate(), // 24
-                    formattedDate: dateObj.toLocaleDateString('en-GB'), // 24/12/2025 (để hiển thị và lưu)
-                    slots: timeSlots
-                }]);
-            }
-        };
-
-        generateSlots();
-    }, [docInfo]); // Chạy lại khi docInfo thay đổi
-
-    // --- 3. TỰ ĐỘNG CHỌN NGÀY ĐẦU TIÊN ---
-    useEffect(() => {
-        if (docSlots.length > 0 && !slotDate) {
-            setSlotDate(docSlots[0].formattedDate);
-        }
-    }, [docSlots, slotDate]);
-
-    // --- 4. XỬ LÝ INITIAL DATA TỪ CHATBOT ---
-    useEffect(() => {
-        if (initialData) {
-            setFormData((prev) => ({
-                ...prev,
-                name: initialData.name || '',
-                phone: initialData.phone || '',
-                email: initialData.email || '',
-                dob: initialData.dob || '',
-                speciality: initialData.speciality || prev.speciality,
-            }));
-
-            if (initialData.doctorId) {
-                setSelectedDocId(initialData.doctorId);
-                const preSelectedDoc = doctors.find(doc => doc._id === initialData.doctorId);
-                if (preSelectedDoc) {
-                    setFormData(prev => ({ ...prev, speciality: preSelectedDoc.speciality }));
+                const dateObj = new Date(today.getTime() + i * 86400000);
+                if (timeSlots.length > 0 || i < 3) {
+                    allSlots.push({
+                        day: daysOfWeek[dateObj.getDay()],
+                        date: dateObj.getDate(),
+                        displayDate: dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+                        backendDate: `${dateObj.getDate()}_${dateObj.getMonth() + 1}_${dateObj.getFullYear()}`,
+                        slots: timeSlots
+                    });
                 }
             }
-            if (initialData.time) setSlotTime(initialData.time);
+            setDocSlots(allSlots);
+            setSlotIndex(0);
+            setSlotTime('');
+        };
+        getAvailableSlots();
+    }, [selectedDoctorObj]);
 
-            // Map ngày từ Chatbot (nếu có logic convert date)
-            if (initialData.date) {
-                setSlotDate(initialData.date);
-            }
+    // --- 3. HANDLERS ---
+    const handleOnChange = (e) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
+        if (e.target.name === 'speciality') { setSelectedDocId(''); setSlotTime(''); }
+    };
+
+    // --- QUAN TRỌNG: HÀM XỬ LÝ ĐẶT LỊCH MỚI ---
+    const handleBookAppointment = async () => {
+        // 1. Validation
+        if (!formData.speciality) return toast.warn("Vui lòng chọn chuyên khoa!");
+        if (!selectedDocId) return toast.warn("Vui lòng chọn bác sĩ!");
+        if (!slotTime) return toast.warn("Vui lòng chọn giờ khám!");
+        if (!token && (!formData.name || !formData.phone || !formData.email || !formData.dob)) {
+            return toast.warn("Vui lòng nhập đầy đủ thông tin cá nhân!");
         }
-    }, [initialData, doctors]);
 
-
-    // --- HELPERS ---
-    const availableDoctors = useMemo(() => {
-        if (!formData.speciality) return [];
-        return doctors.filter(doc => doc.speciality === formData.speciality);
-    }, [formData.speciality, doctors]);
-
-    const selectedDoctorObj = doctors.find(doc => doc._id === selectedDocId);
-
-    // --- XỬ LÝ THANH TOÁN ---
-    const handleConfirmAndPay = async () => {
         setLoading(true);
+
         try {
-            const finalUserData = {
-                ...formData,
-                address: { line1: formData.line1, line2: formData.line2 }
-            };
+            let currentToken = token;
 
-            const payload = {
-                userData: finalUserData,
-                appointmentType: formData.appointmentType,
+            // 2. NẾU CHƯA LOGIN -> GỌI API ĐĂNG KÝ TRƯỚC
+            if (!currentToken) {
+                // Tạo payload đăng ký
+                const registerPayload = {
+                    name: formData.name,
+                    email: formData.email,
+                    password: "ngbbn2712", // Mật khẩu mặc định theo yêu cầu
+                    phone: formData.phone,
+                    dob: formData.dob,
+                    gender: formData.gender,
+                    address: formData.address || ""
+                };
+
+                try {
+                    // Gọi API Register chuẩn của hệ thống
+                    const regRes = await axios.post(backendUrl + '/api/user/register', registerPayload);
+
+                    if (regRes.data.success) {
+                        currentToken = regRes.data.token;
+                        // Lưu token ngay lập tức
+                        setToken(currentToken);
+                        localStorage.setItem('token', currentToken);
+                        toast.success("Đã tự động tạo tài khoản cho bạn!");
+                    } else {
+                        toast.error("Đăng ký thất bại: " + regRes.data.message);
+                        setLoading(false);
+                        return; // Dừng lại nếu không tạo được user
+                    }
+                } catch (regError) {
+                    console.error("Lỗi đăng ký:", regError);
+                    // Nếu lỗi là do email đã tồn tại, có thể xem xét gọi API login hoặc báo lỗi
+                    toast.error(regError.response?.data?.message || "Lỗi khi tạo tài khoản mới");
+                    setLoading(false);
+                    return;
+                }
+            }
+
+            // 3. TIẾN HÀNH ĐẶT LỊCH (Lúc này chắc chắn đã có currentToken)
+            const appointmentPayload = {
                 docId: selectedDocId,
-                amount: selectedDoctorObj ? selectedDoctorObj.fees : 0,
-                slotDate: slotDate,
-                slotTime: slotTime
+                slotDate: docSlots[slotIndex].backendDate,
+                slotTime: slotTime,
+                amount: selectedDoctorObj.fees,
+                appointmentType: bookingType,
+                userData: null // Đã có token nên không cần gửi userData nữa
             };
 
-            console.log("Payload Sending:", payload);
+            // Gọi API book-appointment chuẩn (không dùng guest nữa)
+            const bookRes = await axios.post(
+                backendUrl + '/api/user/book-appointment',
+                appointmentPayload,
+                { headers: { token: currentToken } } // Header chứa token vừa tạo/hoặc có sẵn
+            );
 
-            const { data } = await axios.post(backendUrl + '/api/user/create-guest-payment', payload);
-
-            if (data.success && data.paymentUrl) {
-                window.location.href = data.paymentUrl;
+            if (bookRes.data.success) {
+                toast.success("Đặt lịch thành công!");
+                setSlotTime(''); // Reset giờ
+                if (onCloseModal) onCloseModal(); // Đóng modal, không chuyển trang
             } else {
-                toast.error(data.message || "Lỗi tạo thanh toán");
-                setLoading(false);
+                toast.error(bookRes.data.message);
             }
 
         } catch (error) {
             console.error(error);
-            toast.error("Connection Error");
+            toast.error(error.response?.data?.message || "Lỗi kết nối server");
+        } finally {
             setLoading(false);
         }
     };
 
-    // --- HANDLERS ---
-    const handleModeChange = (mode) => {
-        setBookingType(mode);
-        setFormData(prev => ({ ...prev, appointmentType: mode === 'clinic' ? 'Clinic' : 'Remote' }));
-    };
-
-    const handleOnChange = (event) => {
-        const { name, value } = event.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
-        if (name === 'speciality') setSelectedDocId('');
-    };
-
-    const handleInitiateBooking = () => {
-        if (!formData.name || !formData.phone) return toast.warning("Please enter Name and Phone!");
-        if (!formData.dob) return toast.warning("Please enter Date of Birth!");
-        if (!formData.speciality) return toast.warning("Please select a Specialty!");
-        if (!selectedDocId) return toast.warning("Please select a Doctor!");
-        if (!slotTime) return toast.warning("Please select a Time Slot!");
-
-        setShowPaymentModal(true);
-    };
-
-    const handleCloseSuccess = () => {
-        setShowSuccessModal(false);
-        setFormData({
-            name: '', phone: '', email: '', dob: '',
-            line1: '', line2: '',
-            gender: 'Male', reason: '', appointmentType: 'Clinic', speciality: '',
-        });
-        setSlotIndex(0);
-        setSlotTime('');
-        setSelectedDocId('');
-        if (onCloseModal) onCloseModal();
-    };
-
-    useEffect(() => {
-        const paymentStatus = searchParams.get("payment");
-        if (paymentStatus === "success") {
-            setShowSuccessModal(true);
-            toast.success("Thanh toán thành công!");
-            navigate(location.pathname, { replace: true });
-        } else if (paymentStatus === "failed") {
-            toast.error("Giao dịch bị hủy hoặc lỗi.");
-            navigate(location.pathname, { replace: true });
-        }
-    }, [searchParams, navigate, location.pathname]);
-
     return (
-        <>
-            <div className="bg-white w-full rounded-xl shadow-xl border border-gray-200 overflow-hidden relative">
-                {onCloseModal && (
-                    <button onClick={onCloseModal} className="absolute top-2 right-2 z-10 p-2 text-gray-400 hover:text-red-500 hover:bg-gray-100 rounded-full transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                )}
+        <div className="bg-white w-full rounded-xl shadow-xl border border-gray-200 overflow-hidden relative font-sans">
+            {onCloseModal && (
+                <button onClick={onCloseModal} className="absolute top-3 right-3 z-10 p-2 text-gray-400 hover:text-red-500 bg-gray-50 rounded-full transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                </button>
+            )}
 
-                {/* Tabs */}
-                <div className="flex text-sm font-semibold border-b border-gray-200 bg-gray-50">
-                    {['clinic', 'home'].map(mode => (
-                        <button key={mode} className={`flex-1 py-3 text-center capitalize transition-colors ${bookingType === mode ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-200'}`} onClick={() => handleModeChange(mode)}>
-                            {mode === 'clinic' ? 'At the Clinic' : 'Home Service'}
-                        </button>
-                    ))}
-                </div>
-
-                <div className="p-6 flex flex-col gap-4">
-                    <h3 className="text-lg font-bold text-gray-800 text-center uppercase">Make an Appointment</h3>
-
-                    {/* Chọn Chuyên Khoa */}
-                    <div className="flex flex-col">
-                        <label className="text-xs text-gray-500 font-semibold mb-1 ml-1">Specialty <span className='text-red-500'>*</span></label>
-                        <select name="speciality" value={formData.speciality} onChange={handleOnChange} className="w-full p-3 border border-gray-300 rounded text-sm bg-gray-50 focus:outline-blue-500">
-                            <option value="">Select Specialty</option>
-                            {specialties.map((item, index) => <option key={index} value={item.speciality}>{item.speciality}</option>)}
-                        </select>
-                    </div>
-
-                    {/* Chọn Bác Sĩ */}
-                    {formData.speciality && (
-                        <div className="flex flex-col animate-fade-in-up">
-                            <label className="text-xs text-gray-500 font-semibold mb-1 ml-1">Select Doctor <span className='text-red-500'>*</span></label>
-                            <select value={selectedDocId} onChange={(e) => setSelectedDocId(e.target.value)} className="w-full p-3 border border-blue-300 rounded text-sm bg-blue-50 focus:outline-blue-500 font-medium text-gray-700">
-                                <option value="">-- Choose a Doctor --</option>
-                                {availableDoctors.length > 0 ? (
-                                    availableDoctors.map((doc) => <option key={doc._id} value={doc._id}>{doc.name} — Fee: ${doc.fees}</option>)
-                                ) : (
-                                    <option disabled>No doctors available</option>
-                                )}
-                            </select>
-                            {selectedDoctorObj && <p className="text-xs text-green-600 font-bold mt-1 ml-1">Fee: ${selectedDoctorObj.fees}</p>}
-                        </div>
-                    )}
-
-                    {/* --- GIAO DIỆN SLOT --- */}
-                    {selectedDocId && (
-                        <div className="mt-4">
-                            <p className="text-sm text-gray-700 font-bold mb-3 flex items-center">
-                                <span className="bg-blue-100 text-blue-600 p-1 rounded mr-2">📅</span>
-                                Booking Slots <span className='text-red-500 ml-1'>*</span>
-                                <span className="ml-auto text-xs font-normal text-gray-500">Selected: {slotDate}</span>
-                            </p>
-
-                            {/* Danh sách 7 ngày */}
-                            <div className="flex gap-4 items-center w-full overflow-x-auto pb-4">
-                                {docSlots.length > 0 && docSlots.map((item, index) => (
-                                    <div
-                                        key={index}
-                                        onClick={() => {
-                                            setSlotIndex(index);
-                                            setSlotDate(item.formattedDate);
-                                            setSlotTime('');
-                                        }}
-                                        className={`flex-shrink-0 text-center py-4 min-w-[5rem] rounded-xl cursor-pointer transition-all border
-                                            ${slotIndex === index
-                                                ? 'bg-blue-600 text-white border-blue-600 shadow-lg scale-105'
-                                                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
-                                    >
-                                        <p className="text-xs font-semibold uppercase tracking-wide mb-1">{item.day}</p>
-                                        <p className="text-xl font-bold">{item.date}</p>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* Danh sách Giờ */}
-                            <div className="mt-4">
-                                <p className="text-xs font-semibold text-gray-500 mb-2 ml-1">Available Time:</p>
-                                <div className="flex gap-3 items-center w-full overflow-x-auto pb-4 scroll-smooth">
-                                    {docSlots.length > 0 && docSlots[slotIndex] && docSlots[slotIndex].slots.length > 0 ? (
-                                        docSlots[slotIndex].slots.map((item, index) => (
-                                            <p
-                                                key={index}
-                                                onClick={() => setSlotTime(item.time)}
-                                                className={`flex-shrink-0 text-sm font-medium px-5 py-2 rounded-full cursor-pointer transition-all border whitespace-nowrap
-                                                    ${item.time === slotTime
-                                                        ? 'bg-blue-600 text-white border-blue-600 shadow-md'
-                                                        : 'text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-500'}`}
-                                            >
-                                                {item.time.toLowerCase()}
-                                            </p>
-                                        ))
-                                    ) : (
-                                        <p className="text-xs text-gray-400 ml-1 italic">No slots available.</p>
-                                    )}
-                                </div>
-                            </div>
-                            {!slotTime && <p className="text-xs text-red-500 mt-1 ml-1 italic animate-pulse">⚠️ Please select a time slot</p>}
-                        </div>
-                    )}
-
-                    {/* Inputs Thông tin cá nhân */}
-                    <div className="grid grid-cols-2 gap-3 mt-2">
-                        <input type="text" name="name" value={formData.name} onChange={handleOnChange} placeholder="Full Name *" className="p-3 border border-gray-300 rounded text-sm bg-gray-50" />
-                        <input type="text" name="phone" value={formData.phone} onChange={handleOnChange} placeholder="Phone *" className="p-3 border border-gray-300 rounded text-sm bg-gray-50" />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                        <input type="email" name="email" value={formData.email} onChange={handleOnChange} placeholder="Email Address *" className="p-3 border border-gray-300 rounded text-sm bg-gray-50" />
-                        <div className="relative">
-                            <input
-                                type="date"
-                                name="dob"
-                                value={formData.dob}
-                                onChange={handleOnChange}
-                                className={`p-3 border rounded text-sm w-full bg-gray-50 focus:outline-blue-500 ${!formData.dob ? 'text-gray-400' : 'text-gray-900'}`}
-                            />
-                            {!formData.dob && <span className="absolute left-3 top-3.5 text-sm text-gray-400 pointer-events-none"></span>}
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                        <select name="gender" value={formData.gender} onChange={handleOnChange} className="p-3 border border-gray-300 rounded text-sm bg-gray-50 cursor-pointer">
-                            <option value="Male">Male</option>
-                            <option value="Female">Female</option>
-                            <option value="Other">Other</option>
-                        </select>
-                        <input type="text" name="line1" value={formData.line1} onChange={handleOnChange} placeholder="Address Line 1" className="p-3 border border-gray-300 rounded text-sm bg-gray-50 w-full" />
-                    </div>
-
-                    <input type="text" name="line2" value={formData.line2} onChange={handleOnChange} placeholder="Address Line 2 (Optional)" className="p-3 border border-gray-300 rounded text-sm bg-gray-50 w-full" />
-                    <textarea name="reason" rows="2" value={formData.reason} onChange={handleOnChange} placeholder="Reason / Symptoms..." className="p-3 border border-gray-300 rounded text-sm w-full bg-gray-50 resize-none"></textarea>
-
-                    <button onClick={handleInitiateBooking} disabled={loading} className="w-full font-bold py-3 rounded mt-2 uppercase shadow-md transition-all active:scale-95 bg-yellow-400 hover:bg-yellow-500 text-gray-900">
-                        {loading ? 'Processing...' : selectedDoctorObj ? `Book Now ($${selectedDoctorObj.fees})` : 'Book Now'}
-                    </button>
-                </div>
+            <div className="flex text-sm font-semibold border-b border-gray-200">
+                <button onClick={() => setBookingType('Clinic')} className={`flex-1 py-3 transition-colors ${bookingType === 'Clinic' ? 'bg-blue-600 text-white' : 'text-gray-600 bg-gray-50 hover:bg-gray-100'}`}>Tại Phòng Khám</button>
+                <button onClick={() => setBookingType('Remote')} className={`flex-1 py-3 transition-colors ${bookingType === 'Remote' ? 'bg-blue-600 text-white' : 'text-gray-600 bg-gray-50 hover:bg-gray-100'}`}>Khám Từ Xa</button>
             </div>
 
-            <BookingPaymentModal isOpen={showPaymentModal} onClose={() => setShowPaymentModal(false)} doctor={selectedDoctorObj} onConfirm={handleConfirmAndPay} />
-            <BookingSuccessModal isOpen={showSuccessModal} onClose={handleCloseSuccess} />
-        </>
+            <div className="p-6 space-y-4">
+                <h3 className="text-lg font-bold text-gray-800 text-center uppercase">ĐẶT LỊCH NHANH</h3>
+
+                {/* 1. CHỌN CHUYÊN KHOA */}
+                <div>
+                    <label className="text-xs font-bold text-gray-500 ml-1">CHUYÊN KHOA <span className='text-red-500'>*</span></label>
+                    <select name="speciality" value={formData.speciality} onChange={handleOnChange} className="w-full mt-1 p-2.5 border border-gray-300 rounded text-sm bg-gray-50 focus:border-blue-500 outline-none">
+                        <option value="">-- Chọn chuyên khoa --</option>
+                        {specializations.map((item) => (<option key={item._id} value={item._id}>{item.name}</option>))}
+                    </select>
+                </div>
+
+                {/* 2. CHỌN BÁC SĨ */}
+                {formData.speciality && (
+                    <div className="animate-fade-in-up">
+                        <label className="text-xs font-bold text-gray-500 ml-1">BÁC SĨ <span className='text-red-500'>*</span></label>
+                        <select value={selectedDocId} onChange={(e) => setSelectedDocId(e.target.value)} className="w-full mt-1 p-2.5 border border-blue-300 rounded text-sm bg-blue-50 focus:border-blue-500 outline-none">
+                            <option value="">-- Chọn bác sĩ --</option>
+                            {availableDoctors.length > 0 ? (availableDoctors.map((doc) => <option key={doc._id} value={doc._id}>{doc.name} — {doc.fees.toLocaleString()} VND</option>)) : (<option disabled>Không tìm thấy bác sĩ</option>)}
+                        </select>
+                    </div>
+                )}
+
+                {/* 3. CHỌN SLOT NGÀY & GIỜ */}
+                {selectedDocId && (
+                    <div className="mt-2 animate-fade-in-up">
+                        <div className="bg-blue-50 p-3 rounded border border-blue-100 mb-3 flex justify-between items-center">
+                            <span className="text-sm font-bold text-gray-700">📅 Chọn lịch khám</span>
+                            <span className="text-xs font-bold text-blue-700 bg-white px-2 py-1 rounded shadow-sm">
+                                {docSlots[slotIndex]?.displayDate} {slotTime ? `| ${slotTime}` : ''}
+                            </span>
+                        </div>
+                        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                            {docSlots.map((item, index) => (
+                                <div key={index} onClick={() => { setSlotIndex(index); setSlotTime(''); }} className={`min-w-[4.5rem] text-center py-2 px-2 rounded-lg cursor-pointer border transition-all ${slotIndex === index ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400'}`}>
+                                    <p className="text-[10px] uppercase font-bold opacity-80">{item.day}</p>
+                                    <p className="text-lg font-bold">{item.date}</p>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="mt-3 flex gap-2 flex-wrap">
+                            {docSlots[slotIndex]?.slots.length > 0 ? (
+                                docSlots[slotIndex].slots.map((item, index) => (
+                                    <button key={index} onClick={() => setSlotTime(item.time)} className={`px-3 py-1.5 text-[11px] font-medium rounded-full border transition-all ${slotTime === item.time ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:text-blue-600 hover:border-blue-400'}`}>
+                                        {item.time}
+                                    </button>
+                                ))
+                            ) : (<p className="text-xs text-gray-400 italic w-full text-center py-2">Không còn lịch trống.</p>)}
+                        </div>
+                    </div>
+                )}
+
+                {/* 4. FORM THÔNG TIN (CHỈ HIỆN KHI CHƯA CÓ TOKEN) */}
+                {!token && (
+                    <div className="animate-fade-in-down border-t border-dashed border-gray-300 pt-4 mt-2">
+                        <p className="text-xs font-bold text-gray-500 uppercase mb-3">Thông tin đăng ký nhanh</p>
+                        <div className="grid grid-cols-2 gap-3 mb-3">
+                            <input type="text" name="name" value={formData.name} onChange={handleOnChange} placeholder="Họ và tên *" className="p-2.5 border border-gray-300 rounded text-sm focus:border-blue-500 outline-none w-full" />
+                            <input type="text" name="phone" value={formData.phone} onChange={handleOnChange} placeholder="Số điện thoại *" className="p-2.5 border border-gray-300 rounded text-sm focus:border-blue-500 outline-none w-full" />
+                        </div>
+                        <div className="mb-3">
+                            <input type="email" name="email" value={formData.email} onChange={handleOnChange} placeholder="Email *" className="p-2.5 border border-gray-300 rounded text-sm focus:border-blue-500 outline-none w-full" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 mb-3">
+                            <input type="date" name="dob" value={formData.dob} onChange={handleOnChange} className={`p-2.5 border border-gray-300 rounded text-sm focus:border-blue-500 outline-none w-full ${!formData.dob ? 'text-gray-400' : 'text-gray-900'}`} />
+                            <select name="gender" value={formData.gender} onChange={handleOnChange} className="p-2.5 border border-gray-300 rounded text-sm focus:border-blue-500 outline-none w-full">
+                                <option value="Male">Nam</option>
+                                <option value="Female">Nữ</option>
+                            </select>
+                        </div>
+                        <input type="text" name="address" value={formData.address} onChange={handleOnChange} placeholder="Địa chỉ (Tùy chọn)" className="p-2.5 border border-gray-300 rounded text-sm focus:border-blue-500 outline-none w-full" />
+                    </div>
+                )}
+
+                <button onClick={handleBookAppointment} disabled={loading} className={`w-full font-bold py-3 rounded shadow-md text-white transition-all uppercase tracking-wide mt-2 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 active:scale-95'}`}>
+                    {loading ? 'Đang xử lý...' : 'Xác Nhận Đặt Lịch'}
+                </button>
+            </div>
+        </div>
     );
 };
 
