@@ -49,8 +49,8 @@ graph TD;
     Client[Patient Browser] -->|HTTP/HTTPS| Frontend;
     AdminUser[Admin/Doctor Browser] -->|HTTP/HTTPS| AdminPanel;
     
-    Frontend[Frontend (React/Vite)] -->|REST API| Backend[Backend (Node/Express)];
-    AdminPanel[Admin Panel (React/Vite)] -->|REST API| Backend;
+    Frontend["Frontend (React/Vite)"] -->|REST API| Backend["Backend (Node/Express)"];
+    AdminPanel["Admin Panel (React/Vite)"] -->|REST API| Backend;
 
     Backend -->|Mongoose| Database[(MongoDB)];
     Backend -->|Media Storage| Cloudinary[(Cloudinary)];
